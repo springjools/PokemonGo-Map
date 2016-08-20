@@ -29,11 +29,11 @@ import geopy.distance
 from operator import itemgetter
 from threading import Thread, Lock
 from queue import Queue, Empty
+from datetime import datetime
 
 from pgoapi import PGoApi
 from pgoapi.utilities import f2i
 from pgoapi import utilities as util
-from pgoapi.exceptions import AuthException
 
 from .models import parse_map, Pokemon
 from .fakePogoApi import FakePogoApi
@@ -473,6 +473,12 @@ def search_worker_thread(args, account, search_items_queue, parse_lock, encrypti
                 failed_total = 0
                 while True:
 
+                    # skip disabled accounts
+                    time_now = datetime.now().strftime("%Y-%m-%d %H:%M")
+                    if 'disabled' in account:
+                        if account['disabled']:
+                            return
+
                     # After so many attempts, let's get out of here
                     if failed_total >= args.scan_retries:
                         # I am choosing to NOT place this item back in the queue
@@ -508,7 +514,7 @@ def search_worker_thread(args, account, search_items_queue, parse_lock, encrypti
 
                     # G'damnit, nothing back. Mark it up, sleep, carry on
                     if not response_dict:
-                        log.error('Search step %d area download failed, retrying request in %g seconds', step, sleep_time)
+                        log.error('Search step %d area download failed, retrying request in %g seconds. Username: %s', step, sleep_time, account['username'])
                         failed_total += 1
                         status['fail'] += 1
                         status['message'] = "Failed {} times to scan {},{} - no response - sleeping {} seconds. Username: {}".format(failed_total, step_location[0], step_location[1], sleep_time, account['username'])
@@ -516,16 +522,31 @@ def search_worker_thread(args, account, search_items_queue, parse_lock, encrypti
                         continue
 
                     # Got the response, parse it out, send todo's to db/wh queues
-                    try:
-                        findCount = parse_map(args, response_dict, step_location, dbq, whq)
+                    # handle the exception in parse_map instead, cleaner output
+
+                    findCount = parse_map(args, response_dict, step_location, dbq, whq)
+
+                    if findCount == 0:
+                        status['noitems'] += 1
+                    elif findCount > 0:
+                        status['success'] += 1
+
+                    if findCount >= 0:
                         log.debug('Search step %s completed', step)
                         search_items_queue.task_done()
-                        if findCount > 0:
-                            status['success'] += 1
-                        else:
-                            status['noitems'] += 1
                         break  # All done, get out of the request-retry loop
-                    except KeyError:
+                    elif findCount == -1:
+                        # error returned by parse_map: KeyError or TypeError
+                        if 'fails' not in account:
+                            account['fails'] = 0
+                        account['fails'] += 1
+                        if account['fails'] >= 3:
+                            account['disabled'] = True
+                            log.error('User {}: Exceeded map download retries: removed worker'.format(account['username']))
+                            with open("loginerrors.log", "a") as myfile:
+                                myfile.write(str(time_now) + "\t" + str(account['username']) + "\t Reason: exceeded map download attemps")
+                                myfile.write("\n")
+
                         log.exception('Search step %s map parsing failed, retrying request in %g seconds. Username: %s', step, sleep_time, account['username'])
                         failed_total += 1
                         status['fail'] += 1
@@ -636,6 +657,11 @@ def search_worker_thread_ss(args, account, search_items_queue, parse_lock, encry
 
 def check_login(args, account, api, position):
 
+    if 'disabled' in account:
+        if account['disabled']:
+            return False
+
+    time_now = datetime.now().strftime("%Y-%m-%d %H:%M")
     # Logged in? Enough time left? Cool!
     if api._auth_provider and api._auth_provider._ticket_expire:
         remaining_time = api._auth_provider._ticket_expire / 1000 - time.time()
@@ -646,20 +672,28 @@ def check_login(args, account, api, position):
     # Try to login (a few times, but don't get stuck here)
     i = 0
     api.set_position(position[0], position[1], position[2])
-    while i < args.login_retries:
-        try:
-            if args.proxy:
-                api.set_authentication(provider=account['auth_service'], username=account['username'], password=account['password'], proxy_config={'http': args.proxy, 'https': args.proxy})
-            else:
-                api.set_authentication(provider=account['auth_service'], username=account['username'], password=account['password'])
+    loggedIn = False
+
+    while i < args.login_retries and not loggedIn:
+        if args.proxy:
+            loggedIn = api.set_authentication(provider=account['auth_service'], username=account['username'], password=account['password'], proxy_config={'http': args.proxy, 'https': args.proxy})
+        else:
+            loggedIn = api.set_authentication(provider=account['auth_service'], username=account['username'], password=account['password'])
+        if loggedIn:
             break
-        except AuthException:
-            if i >= args.login_retries:
-                raise TooManyLoginAttempts('Exceeded login attempts')
-            else:
-                i += 1
-                log.error('Failed to login to Pokemon Go with account %s. Trying again in %g seconds', account['username'], args.login_delay)
-                time.sleep(args.login_delay)
+        else:
+            i += 1
+            log.warning('Failed to login to Pokemon Go with account %s. Trying again in %g seconds', account['username'], args.login_delay)
+            time.sleep(args.login_delay)
+
+    if not loggedIn:
+
+        log.error("Login failed with user '{}', account removed from task".format(account['username']))
+        account['disabled'] = True
+        with open("loginerrors.log", "a") as myfile:
+            myfile.write(str(time_now) + "\t" + str(account['username']) + "\t Reason: failed to login in a timely manner")
+            myfile.write("\n")
+        return False
 
     log.debug('Login for account %s successful', account['username'])
 
