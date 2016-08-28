@@ -20,6 +20,7 @@ from . import config
 from .utils import get_pokemon_name, get_pokemon_rarity, get_pokemon_types, get_args
 from .transform import transform_from_wgs_to_gcj, get_new_coords, generate_location_steps
 from .customLog import printPokemon
+from bot import sendPokefication
 
 log = logging.getLogger(__name__)
 
@@ -523,7 +524,9 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue):
                     'longitude': p['longitude'],
                     'disappear_time': d_t
                 }
-
+                
+                sendPokefication(p['pokemon_data']['pokemon_id'],p['latitude'],p['longitude'],d_t,b64encode(str(p['encounter_id'])))
+                
                 if args.webhooks:
                     wh_update_queue.put(('pokemon', {
                         'encounter_id': b64encode(str(p['encounter_id'])),
