@@ -499,8 +499,19 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue):
     pokemons = {}
     pokestops = {}
     gyms = {}
-
-    cells = map_dict['responses']['GET_MAP_OBJECTS']['map_cells']
+    
+    try:
+        cells = map_dict['responses']['GET_MAP_OBJECTS']['map_cells']
+    except KeyError as e:
+        # debug because the error is caught in search.py anyway
+        log.debug("Could not parse map: invalid map")
+        return {'count':0, 'gyms' :{}}
+        
+    except TypeError as e:
+        # debug because the error is caught in search.py anyway
+        log.debug("Could not parse map: invalid map")
+        return {'count':0, 'gyms' :{}}
+    
     for cell in cells:
         if config['parse_pokemon']:
             for p in cell.get('wild_pokemons', []):
