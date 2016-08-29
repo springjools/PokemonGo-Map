@@ -268,9 +268,20 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id):
         pokemonList = user.get('notify_list')
         paused = user.get('pause_notifications')
         uname = name if len(name) > 0 else chat_id
+        location = user.get('location')
         
         if paused: continue
+        
+        if location and len(location) > 0:
+            max_dist = user.get('max_distance')
+            log.debug("Max_distance of user {} is {} m".format(uname,max_dist))
+            max_dist = _max_ping_distance if not max_dist else int(max_dist)
+            user_lat = location[0]
+            user_lon = location[1]
             
+            dist = getDist(float(lat),float(lon),float(user_lat),float(user_lon))
+            if dist > _max_message_distance: continue
+        
         if pname in pokemonList:
             street      = "Street"
             streetnum   = "no"
@@ -339,18 +350,7 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id):
                 try:
                     location = user.get('location')
                     if location and len(location) > 0:
-                        max_dist = user.get('max_distance')
-                        log.debug("Max_distance of user {} is {} m".format(uname,max_dist))
-                        max_dist = _max_ping_distance if not max_dist else int(max_dist)
-                        user_lat = location[0]
-                        user_lon = location[1]
-                        
-                        dist = getDist(float(lat),float(lon),float(user_lat),float(user_lon))
-                        log.info("Pokemon is {}m away from user {}".format(dist,uname))
-                        
-                        if dist > _max_message_distance: continue
-                        
-                        if dist < max_dist:
+                        if dist and dist < max_dist:
                             bot.sendMessage(chat_id, text="A wild *{}* appeared {}m from you, it will disappear *{}* (in {}m {}s)".format(pname,dist,poketime,strMin,strSec),reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)
                         if encounter_id in pokeDB and pokeDB[encounter_id][4]:
                             bot.sendVenue(chat_id,float(lat),float(lon),pname,"{} ({}m {}s)\r\r On {} {} ({} m away)".format(poketime,strMin,strSec,street,streetnum,dist),disable_notification=True,reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)

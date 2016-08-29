@@ -823,7 +823,7 @@ def location_received(bot, update):
     uname = update.message.chat.username
     uname = uname if len(uname) > 0 else chat_id
     
-    logger.debug("Received Location from user: {}, bot = {}, update = {}".format(uname,bot,update))
+    logger.debug("Received Location from user: {}".format(uname))
     
     lat = update.message.location.latitude
     lon = update.message.location.longitude
@@ -910,7 +910,6 @@ def main():
         num_users += 1
         serverList = user.get('server_list') if 'server_list' in user else []
         logger.debug("User {} has {} servers".format(user.get('name'),len(serverList)))
-        logger.debug("list = {}".format(serverList))
         num_servers += len(serverList)
     
     logger.info ("Started pokembot successfully on: {}".format(time_now))
