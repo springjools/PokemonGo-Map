@@ -75,7 +75,7 @@ if not hasattr(pgoapi, "__version__") or StrictVersion(pgoapi.__version__) < Str
     sys.exit(1)
 
 
-bannedIPList = ['192.168.1.101']
+bannedIPList = ['192.168.1.101', '82.181.22.219']
 
 def main():
     args = get_args()
@@ -134,8 +134,9 @@ def main():
     logging.getLogger('pgoapi.auth').setLevel(logging.WARNING)
     logging.getLogger('pgoapi.auth_ptc').setLevel(logging.WARNING)
     logging.getLogger('pogom').setLevel(logging.WARNING)
+    logging.getLogger('pogom.search').setLevel(logging.INFO)
     
-    logging.getLogger('pogom.bot').setLevel(logging.DEBUG)
+    logging.getLogger('pogom.bot').setLevel(logging.INFO)
     config['parse_pokemon'] = not args.no_pokemon
     config['parse_pokestops'] = not args.no_pokestops
     config['parse_gyms'] = not args.no_gyms

@@ -247,7 +247,7 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id):
     strSec      = "0" + str(deltaSec) if deltaSec < 10 else str(deltaSec)
     pname = pokemonNames[pokemon_id-1]
     
-    log.info("Found a wild {} that will disappear in {}m {}s".format(pname,strMin,strSec))
+    log.debug("Found a wild {}, TTH: {}m {}s".format(pname,strMin,strSec))
     
     
     
@@ -304,16 +304,14 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id):
                         pokeDB[encounter_id] = [street, streetnum,poketime_utc,pname,True]
                         log.info("{}: Encoded critter {} into db as: {} {}".format(encounter_id,pname,street, streetnum))
                         
-                        gcCount = gc_counts.find()[0]
+                        gcCount = gc_counts.find({},{'counts': 1, '_id': 0})[0]['counts']
                         
                         if not today in gcCount: gcCount[today] = 0
                         
                         gcCount[today] += 1
                         user_gc_count[today] += 1
-                        
+                        gc_counts.update({},{"$set":{'counts':gcCount}})
                         log.info("Updated geocode-count: {} = {}".format(day_now,gcCount[today]))
-                        
-                        #db.update({'gc_counts':gcCount},eids=[1])
                         
                         users.update({'chat_id': chat_id},{"$set":{'user_gc_count':user_gc_count}})
                     except UnicodeEncodeError as e:
@@ -362,8 +360,8 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id):
                     log.info("User {} has requested notification of {}: notification sent".format(uname,pname))
                 except Unauthorized as e:
                     log.warning("Unable to send notification to user {}: {}".format(uname,e))
-                    users.remove(User.chat_id == chat_id)
-                    log.warning("Removed user {} from database".format(uname))
+                    result = users.delete_one({'chat_id': chat_id})
+                    log.warning("Removed user {} from database: db returned: {}".format(uname,result))
                 except Exception as e:
                     log.warning("Unable to send notification to user {}: {}".format(uname,e))
                     continue

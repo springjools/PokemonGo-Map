@@ -31,25 +31,12 @@ from time import mktime
 from datetime import datetime, timedelta
 import os, platform
 import pprint
-import re
-from tinydb import TinyDB, Query, where
-from tinydb.operations import delete
-from tinydb_smartcache import SmartCacheTable
 import requests.packages.urllib3
 requests.packages.urllib3.disable_warnings()
 import ConfigParser
 
 from pogom import config
 
-#from threading import Thread, Event
-#from queue import Queue
-#from flask_cors import CORS
-#from pogom import config
-#from pogom.app import Pogom
-#from pogom.utils import get_args, insert_mock_data, get_encryption_lib_path
-#from pogom.search import search_overseer_thread
-#from pogom.models import init_database, create_tables, drop_tables, Pokemon, Pokestop, Gym
-#from pgoapi import utilities as util
 from pygeolib import GeocoderError 
 from geopy.geocoders.base import GeocoderServiceError
 from colorlog import ColoredFormatter
@@ -863,11 +850,20 @@ def main():
     users = db.users
     gc_counts = db.gc_counts
     
-    print "Google-geocode counts:"
     
-    for key,item in gc_counts.find()[0].items():
-        print "--> {}: {}".format(key,item)
-    
+    if gc_counts.find().count() > 0:
+        print "Google-geocode counts:"
+        gcc = gc_counts.find({},{'counts': 1, '_id': 0})[0]['counts']
+        
+        for key,item in gcc.items():
+            print "--> {}: {}".format(key,item)
+    else:
+        time_now = datetime.utcnow()
+        day_now = time_now.date()
+        today   = str(day_now)
+        gcc = {today : 0}
+        gc_counts.insert_one({'counts':gcc})
+        print "Starting from fresh new database"
     
     updater = Updater(TOKEN,workers=10)
     job_queue = updater.job_queue

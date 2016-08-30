@@ -1,5 +1,6 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
+from __future__ import division
 
 '''
 Search Architecture:
@@ -25,6 +26,9 @@ import random
 import time
 import geopy
 import geopy.distance
+import sys
+from datetime import datetime, timedelta
+from requests import ConnectionError
 
 from operator import itemgetter
 from threading import Thread
@@ -46,6 +50,11 @@ log = logging.getLogger(__name__)
 
 TIMESTAMP = '\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000'
 
+total_points = None
+total_pokemons = 0
+total_gyms = 0
+_loop = 0
+time_0 = datetime.now()
 
 # Apply a location jitter
 def jitterLocation(location=None, maxMeters=10):
@@ -284,10 +293,15 @@ def search_overseer_thread(args, method, new_location_queue, pause_bit, encrypti
                 log.warning('Nothing to scan!')
 
             threadStatus['Overseer']['message'] = 'Queuing steps'
+            
+            global total_points
+            total_points = len(locations)
+            
             for step, step_location in enumerate(locations, 1):
                 log.debug('Queueing step %d @ %f/%f/%f', step, step_location[0][0], step_location[0][1], step_location[0][2])
                 search_args = (step, step_location[0], step_location[1], step_location[2])
                 search_items_queue.put(search_args)
+                
         else:
             nextitem = search_items_queue.queue[0]
             threadStatus['Overseer']['message'] = 'Processing search queue, next item is {:6f},{:6f}'.format(nextitem[1][0], nextitem[1][1])
@@ -474,7 +488,7 @@ def search_worker_thread(args, account, search_items_queue, pause_bit, encryptio
                         remain = appears - now() + 10
                         status['message'] = 'Early for {:6f},{:6f}; waiting {}s...'.format(step_location[0], step_location[1], remain)
                         if first_loop:
-                            log.info(status['message'])
+                            log.debug(status['message'])
                             first_loop = False
                         time.sleep(1)
                     if paused:
@@ -487,19 +501,53 @@ def search_worker_thread(args, account, search_items_queue, pause_bit, encryptio
                     status['skip'] += 1
                     # it is slightly silly to put this in status['message'] since it'll be overwritten very shortly after. Oh well.
                     status['message'] = 'Too late for location {:6f},{:6f}; skipping'.format(step_location[0], step_location[1])
-                    log.info(status['message'])
+                    log.debug(status['message'])
                     # No sleep here; we've not done anything worth sleeping for. Plus we clearly need to catch up!
                     continue
 
                 status['message'] = 'Searching at {:6f},{:6f}'.format(step_location[0], step_location[1])
-                log.info(status['message'])
+                log.debug(status['message'])
+                
+                if step < 1:
+                    global _loop
+                    _loop += 1
+                    time_1 = datetime.now()
+                    deltaTime = time_0 - time_1
+                    dseconds = deltaTime.seconds
+        
+                    dhour = int(dseconds/3600)
+                    dmin = int((dseconds-dhour*3600)/60)
+                    dsec = int((dseconds-dhour*3600-dmin*60)/60)
+                    
+                    log.info("Completed round {} in {}m {}s. Found {} pokemon and {} gyms.".format(_loop,dmin,dsec,total_pokemons,total_gyms))
+                    
+                    global total_gyms
+                    global total_pokemons
+                    global time_0
+                    time_0 = datetime.now()
+                    total_gyms = 0
+                    total_pokemons = 0
+                
+                percent = step/ total_points
+                bar_length = 40
+                hashes = '#' * int(round(percent * bar_length))
+                spaces = ' ' * (bar_length - len(hashes))
+                sys.stdout.write("\rPercent: [{0}] {1}%, Round {2}: step {3} of {4}".format(hashes + spaces, int(round(percent * 100)),_loop,step,total_points))
+                sys.stdout.flush()
+                
+                
 
                 # Let the api know where we intend to be for this loop
                 api.set_position(*step_location)
 
                 # Ok, let's get started -- check our login status
-                check_login(args, account, api, step_location)
-
+                try:
+                    check_login(args, account, api, step_location)
+                except ConnectionError as e:
+                    log.warn("Connection error: trying again soon")
+                    time.sleep(30)
+                    continue
+                    
                 # Make the actual request (finally!)
                 response_dict = map_request(api, step_location, args.jitter)
 
@@ -507,7 +555,7 @@ def search_worker_thread(args, account, search_items_queue, pause_bit, encryptio
                 if not response_dict:
                     status['fail'] += 1
                     status['message'] = 'Invalid response at {:6f},{:6f}, abandoning location'.format(step_location[0], step_location[1])
-                    log.error(status['message'])
+                    log.warn(status['message'])
                     time.sleep(args.scan_delay)
                     continue
 
@@ -518,6 +566,8 @@ def search_worker_thread(args, account, search_items_queue, pause_bit, encryptio
                     status[('success' if parsed['count'] > 0 else 'noitems')] += 1
                     status['message'] = 'Search at {:6f},{:6f} completed with {} finds'.format(step_location[0], step_location[1], parsed['count'])
                     log.debug(status['message'])
+                    global total_pokemons
+                    total_pokemons += parsed['count']
                 except KeyError:
                     parsed = False
                     status['fail'] += 1
@@ -568,6 +618,8 @@ def search_worker_thread(args, account, search_items_queue, pause_bit, encryptio
 
                             # increment which gym we're on (for status messages)
                             current_gym += 1
+                            global total_gyms
+                            total_gyms += 1
 
                         status['message'] = 'Processing details of {} gyms for location {},{}...'.format(len(gyms_to_update), step_location[0], step_location[1])
                         log.debug(status['message'])
