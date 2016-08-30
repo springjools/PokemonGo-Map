@@ -50,7 +50,7 @@ log = logging.getLogger(__name__)
 
 TIMESTAMP = '\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000'
 
-total_points = None
+total_points = 0
 total_pokemons = 0
 total_gyms = 0
 _loop = 0
@@ -508,8 +508,14 @@ def search_worker_thread(args, account, search_items_queue, pause_bit, encryptio
                 status['message'] = 'Searching at {:6f},{:6f}'.format(step_location[0], step_location[1])
                 log.debug(status['message'])
                 
-                if step < 1:
-                    global _loop
+                
+                global total_gyms
+                global total_pokemons
+                global time_0
+                global _loop
+                
+                if step <= 1 and _loop >= 1:
+                    
                     _loop += 1
                     time_1 = datetime.now()
                     deltaTime = time_0 - time_1
@@ -518,12 +524,11 @@ def search_worker_thread(args, account, search_items_queue, pause_bit, encryptio
                     dhour = int(dseconds/3600)
                     dmin = int((dseconds-dhour*3600)/60)
                     dsec = int((dseconds-dhour*3600-dmin*60)/60)
-                    
+                    log.info("\r\r*************************")
                     log.info("Completed round {} in {}m {}s. Found {} pokemon and {} gyms.".format(_loop,dmin,dsec,total_pokemons,total_gyms))
+                    log.info("********************\r\r")
                     
-                    global total_gyms
-                    global total_pokemons
-                    global time_0
+                    
                     time_0 = datetime.now()
                     total_gyms = 0
                     total_pokemons = 0
@@ -566,7 +571,6 @@ def search_worker_thread(args, account, search_items_queue, pause_bit, encryptio
                     status[('success' if parsed['count'] > 0 else 'noitems')] += 1
                     status['message'] = 'Search at {:6f},{:6f} completed with {} finds'.format(step_location[0], step_location[1], parsed['count'])
                     log.debug(status['message'])
-                    global total_pokemons
                     total_pokemons += parsed['count']
                 except KeyError:
                     parsed = False
@@ -618,7 +622,6 @@ def search_worker_thread(args, account, search_items_queue, pause_bit, encryptio
 
                             # increment which gym we're on (for status messages)
                             current_gym += 1
-                            global total_gyms
                             total_gyms += 1
 
                         status['message'] = 'Processing details of {} gyms for location {},{}...'.format(len(gyms_to_update), step_location[0], step_location[1])

@@ -133,7 +133,7 @@ def main():
     #more custom ones
     logging.getLogger('pgoapi.auth').setLevel(logging.WARNING)
     logging.getLogger('pgoapi.auth_ptc').setLevel(logging.WARNING)
-    logging.getLogger('pogom').setLevel(logging.WARNING)
+    logging.getLogger('pogom').setLevel(logging.ERROR)
     logging.getLogger('pogom.search').setLevel(logging.INFO)
     
     logging.getLogger('pogom.bot').setLevel(logging.INFO)
