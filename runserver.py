@@ -136,7 +136,7 @@ def main():
     logging.getLogger('pgoapi.auth_ptc').setLevel(logging.WARNING)
     logging.getLogger('pogom').setLevel(logging.INFO)
     #logging.getLogger('pogom.search').setLevel(logging.INFO)
-    
+    logging.getLogger('pogom.models').setLevel(logging.WARNING)
     logging.getLogger('pogom.bot').setLevel(logging.INFO)
     logging.getLogger('pogom.connectionpool').setLevel(logging.CRITICAL)
     logging.getLogger('urllib3.connectionpool').setLevel(logging.CRITICAL)

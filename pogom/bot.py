@@ -16,6 +16,7 @@ import ConfigParser
 import math
 import time
 import random
+import threading
 
 from datetime import datetime, timedelta
 from dateutil import tz
@@ -53,6 +54,7 @@ _maxGC = 400
 _max_ping_distance=1500
 _max_message_distance=5000
 seen_before = None
+locks = dict()
    
 pokemonDict = {
     1: "Bulbasaur",
@@ -252,22 +254,26 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id):
     strSec      = "0" + str(deltaSec) if deltaSec < 10 else str(deltaSec)
     pname = pokemonNames[pokemon_id-1]
     
+    
     log.debug("Found a wild {}, TTH: {}m {}s".format(pname,strMin,strSec))
     
     inpokeDB = None
     try:
         inpokeDB = encounter_id in pokeDB
-        log.info("Pokemon {} is already in pokedB".format(pokemon_id))
     except TypeError:
         inpokeDB = False
-        log.info("Pokemon {} is not in pokedB".format(pokemon_id))
-    
+        
+    if inpokeDB:
+        log.info("Pokemon {} is already in pokedB: {}, as {}".format(pokemon_id,inpokeDB,pokeDB[encounter_id]))
+    else:
+        log.debug("Pokemon {} is not in pokedB".format(pokemon_id))
+        
     retries = 0
     while retries < 2:
         try:
             for user in users.find():
                 if not user.get('notify_list') or len(user.get('notify_list')) == 0: continue
-
+                
                 name = user.get('name')
                 
                 chat_id = user.get('chat_id')
@@ -275,6 +281,11 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id):
                 paused = user.get('pause_notifications')
                 uname = name if len(name) > 0 else chat_id
                 location = user.get('location')
+                
+                if not pname in pokemonList: continue
+                
+                if chat_id not in locks: locks[chat_id] = threading.Lock()
+                lock = locks[chat_id]
                 
                 if paused: continue
                 
@@ -288,29 +299,31 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id):
                     dist = getDist(float(lat),float(lon),float(user_lat),float(user_lon))
                     if dist > _max_message_distance: continue
                 
-                if pname in pokemonList:
-                    street      = "Street"
-                    streetnum   = "no"
-                    
+                street      = "Street"
+                streetnum   = "no"
+                
+                if not encounter_id in pokeDB:
                     #reverse geocode
-                    if not inpokeDB:
-                        user_gc_count = user.get('user_gc_count') if 'user_gc_count' in user else {}
-                        street      = str(round(lat,3))
-                        streetnum   = str(round(lon,3))
+                    user_gc_count = user.get('user_gc_count') if 'user_gc_count' in user else {}
+                    street      = str(round(lat,3))
+                    streetnum   = str(round(lon,3))
+                    
+                    with lock:
                         pokeDB[encounter_id] = [street, streetnum,poketime_utc,pname,False,[]]
-                        
-                        if not today in user_gc_count: user_gc_count[today] = 0
-                        
-                        log.debug("User {} has used {} geocodings today".format(uname,user_gc_count[today]))
-                        
-                        if user_gc_count[today] < _maxGC:
-                            try:
-                                geocode     = Geocoder.reverse_geocode(lat,lon)
-                                street      = geocode.route
-                                streetnum   = geocode.street_number
-                                
-                                if not streetnum: streetnum = "?"
-                                
+                    
+                    if not today in user_gc_count: user_gc_count[today] = 0
+                    
+                    log.debug("User {} has used {} geocodings today".format(uname,user_gc_count[today]))
+                    
+                    if user_gc_count[today] < _maxGC:
+                        try:
+                            geocode     = Geocoder.reverse_geocode(lat,lon)
+                            street      = geocode.route
+                            streetnum   = geocode.street_number
+                            
+                            if not streetnum: streetnum = "?"
+                            
+                            with lock:
                                 pokeDB[encounter_id][0]     = street
                                 pokeDB[encounter_id][1]     = streetnum
                                 pokeDB[encounter_id][4]     = True
@@ -325,29 +338,32 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id):
                                 gc_counts.update({},{"$set":{'counts':gcCount}})
                                 log.debug("Updated geocode-count: {} = {}".format(day_now,gcCount[today]))
                                 users.update({'chat_id': chat_id},{"$set":{'user_gc_count':user_gc_count}})
-                            except UnicodeEncodeError as e:
-                                log.warning("UnicodeEncodeError with pokemon {} at address {}, {}".format(pname,street,streetnum))
-                            except GeocoderError as e:
-                                log.warning("Geocode-error: {} - using coords instead".format(e))
-                        else:
-                            log.debug("User {} has over {} geocodes today, using coords instead".format(uname,user_gc_count[today]))
-                            street      = pokeDB[encounter_id][0] if encounter_id in pokeDB else str(round(lat,3))
-                            streetnum   = pokeDB[encounter_id][1] if encounter_id in pokeDB else str(round(lon,3))
+                        except UnicodeEncodeError as e:
+                            log.warning("UnicodeEncodeError with pokemon {} at address {}, {}".format(pname,street,streetnum))
+                        except GeocoderError as e:
+                            log.warning("Geocode-error: {} - using coords instead".format(e))
                     else:
-                        street = pokeDB[encounter_id][0] if encounter_id in pokeDB else "?"
-                        streetnum = pokeDB[encounter_id][1] if encounter_id in pokeDB else "?"
-                        log.info("Retrieved critter {} location name from DB as {}".format(pname,street+" "+streetnum))
+                        log.debug("User {} has over {} geocodes today, using coords instead".format(uname,user_gc_count[today]))
+                        street      = pokeDB[encounter_id][0] if encounter_id in pokeDB else str(round(lat,3))
+                        streetnum   = pokeDB[encounter_id][1] if encounter_id in pokeDB else str(round(lon,3))
+                else:
+                    street = pokeDB[encounter_id][0] if encounter_id in pokeDB else "?"
+                    streetnum = pokeDB[encounter_id][1] if encounter_id in pokeDB else "?"
+                    log.info("Retrieved critter {} location name from DB as {}".format(pname,street+" "+streetnum))
+                
+                log.debug("Probing critter {} for user {}: Encounter-id: {}, in-db: {},in db: {}".format(pname,uname,encounter_id,inpokeDB,encounter_id in pokeDB))
+                
+                custom_keyboard         = [['Pause','Location'],['Exclude ' + pname,]]
+                reply_markup            = telegram.ReplyKeyboardMarkup(custom_keyboard,one_time_keyboard=True,resize_keyboard=True)
+                
+                log.debug("Current PokeDB - user {}: {}".format(uname,pokeDB))
+                
+                with lock:
+                    nList = pokeDB[encounter_id][5]
+                    log.debug("NL: user {}: fetched list as: {}, PB= {}".format(uname,nList,pokeDB))
                     
-                    log.debug("Probing critter {} for user {}: Encounter-id: {}, in-db: {},in db: {}".format(pname,uname,encounter_id,inpokeDB,encounter_id in pokeDB))
-                    
-                    custom_keyboard         = [['Pause','Location'],['Exclude ' + pname,]]
-                    reply_markup            = telegram.ReplyKeyboardMarkup(custom_keyboard,one_time_keyboard=True,resize_keyboard=True)
-                    
-                    notifiedList = pokeDB[encounter_id][5] or []
-                    
-                    
-                    if not uname in notifiedList:
-                        log.info("Pokemon {} is not in pokedB, user= {}, list = {}".format(pokemon_id,uname,notifiedList))
+                    if not uname in nList:
+                        log.debug("Pokemon {}: user {} is not in notifylist, list = {}".format(pokemon_id,uname,nList))
                         try:
                             location = user.get('location')
                             if location and len(location) > 0:
@@ -359,9 +375,12 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id):
                                     bot.sendVenue(chat_id,float(lat),float(lon),pname,"{} ({}m {}s)\r\r({} m away)".format(poketime,strMin,strSec,dist),disable_notification=True,reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)
                                     
                             else:
-                                bot.sendVenue(chat_id,float(lat),float(lon),pname,"{} ({}m {}s)\r\r {} {}".format(poketime,strMin,strSec,street,streetnum,),disable_notification=True,reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)
-                            notifiedList.append(uname)
-                            pokeDB[encounter_id][5] = notifiedList
+                                bot.sendVenue(chat_id,float(lat),float(lon),pname,"{} ({}m {}s)\r\r {} {}".format(poketime,strMin,strSec,street,streetnum,),disable_notification=True,reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)                        
+                            nList.append(uname)
+                            
+                            #global pokeDB
+                            pokeDB[encounter_id][5] = nList
+                            #log.info("Notified-list = {}, PDB = {}".format(nList,pokeDB))
                             log.info("User {} has requested notification of {}: notification sent".format(uname,pname))
                         except Unauthorized as e:
                             log.warning("Unable to send notification to user {}: {}".format(uname,e))
@@ -371,23 +390,29 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id):
                             log.warning("Unable to send notification to user {}: {}".format(uname,e))
                             continue
                     else:
-                        log.info("Notification to {} not sent: already notified of {} on {}".format(uname,pname,street))
+                        log.info("Not sent: user {} already notified of {} on {}".format(uname,pname,street))
+            #if len(pokeDB) > 0:
+                #log.info("Current PokeDB: {}".format(pokeDB))
         except NetworkTimeout as e:
             retries += 1
             log.warning("Connection to db timed out")
             time.sleep(random.random() + 3)
-            if retries > 2: break
+            if retries > 2: return
+            continue
         except PyMongoError as e:
             retries += 1
             log.warning("Error connecting to the db: {}".format(e))
             time.sleep(random.random() + 3)
-            if retries > 2: break
+            if retries > 2: return
             continue
-            
     if time_now > time_db_check + timedelta(seconds=60):
         log.debug("Checking pokeDB for expired critters")
         log.debug("Size of encounter-db:{}".format(len(pokeDB)))
         time_db_check = time_now
+        
+        if not "pokedb" in locks: locks["pokedb"] = threading.Lock() 
+
+        lock = locks["pokedb"]
         
         c = deepcopy(pokeDB)
         log.debug("Copied db: len = {}, type = {}".format(len(c),type(c)))
@@ -403,8 +428,9 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id):
             deltaMin    = round(deltaTime.seconds/60,0)
             log.debug("db: Critter {} expires {} or in {} mins".format(pokename,time_poke,deltaMin))
             if time_now > time_poke:
-                pokeDB.pop(key,None)
-                log.info("Deleted pokemon {} with encounter-id={} from pokeDB".format(pokename,key))
+                with lock:
+                    pokeDB.pop(key,None)
+                    log.info("Deleted pokemon {} with encounter-id={} from pokeDB".format(pokename,key))
                 
         c = None
     
