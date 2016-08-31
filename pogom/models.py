@@ -670,6 +670,7 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue):
     return {
         'count': len(pokemons) + len(pokestops) + len(gyms),
         'gyms': gyms,
+        'count2': [len(pokemons),len(pokestops),len(gyms)]
     }
 
 

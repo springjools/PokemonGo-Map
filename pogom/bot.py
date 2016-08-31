@@ -14,12 +14,15 @@ from telegram.error import TelegramError, Unauthorized, BadRequest, TimedOut, Ne
 import telegram
 import ConfigParser
 import math
+import time
+import random
 
 from datetime import datetime, timedelta
 from dateutil import tz
 from pytz import timezone
 from copy import deepcopy
 from pymongo import MongoClient
+from pymongo.errors import NetworkTimeout, ConnectionFailure, ExecutionTimeout, PyMongoError
 
 from pygeocoder import Geocoder
 from pygeolib import GeocoderError
@@ -49,6 +52,7 @@ time_db_check = datetime.utcnow()
 _maxGC = 400
 _max_ping_distance=1500
 _max_message_distance=5000
+seen_before = None
    
 pokemonDict = {
     1: "Bulbasaur",
@@ -224,6 +228,7 @@ def getDist(lat0,lon0,lat1,lon1):
 
 def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id):
     global time_db_check
+    global pokeDB
         from_zone = tz.tzutc()
     to_zone = tz.tzlocal()
     
@@ -249,127 +254,138 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id):
     
     log.debug("Found a wild {}, TTH: {}m {}s".format(pname,strMin,strSec))
     
-    
-    
-    seen_before = None
+    inpokeDB = None
     try:
-        seen_before = encounter_id in pokeDB
+        inpokeDB = encounter_id in pokeDB
+        log.info("Pokemon {} is already in pokedB".format(pokemon_id))
     except TypeError:
-        seen_before = False
+        inpokeDB = False
+        log.info("Pokemon {} is not in pokedB".format(pokemon_id))
     
-    
-    
-    for user in users.find():
-        if not user.get('notify_list') or len(user.get('notify_list')) == 0: continue
+    retries = 0
+    while retries < 2:
+        try:
+            for user in users.find():
+                if not user.get('notify_list') or len(user.get('notify_list')) == 0: continue
 
-        name = user.get('name')
-        
-        chat_id = user.get('chat_id')
-        pokemonList = user.get('notify_list')
-        paused = user.get('pause_notifications')
-        uname = name if len(name) > 0 else chat_id
-        location = user.get('location')
-        
-        if paused: continue
-        
-        if location and len(location) > 0:
-            max_dist = user.get('max_distance')
-            log.debug("Max_distance of user {} is {} m".format(uname,max_dist))
-            max_dist = _max_ping_distance if not max_dist else int(max_dist)
-            user_lat = location[0]
-            user_lon = location[1]
-            
-            dist = getDist(float(lat),float(lon),float(user_lat),float(user_lon))
-            if dist > _max_message_distance: continue
-        
-        if pname in pokemonList:
-            street      = "Street"
-            streetnum   = "no"
-            
-            #reverse geocode
-            if not seen_before:
-                user_gc_count = user.get('user_gc_count') if 'user_gc_count' in user else {}
+                name = user.get('name')
                 
-                if not today in user_gc_count: user_gc_count[today] = 0
+                chat_id = user.get('chat_id')
+                pokemonList = user.get('notify_list')
+                paused = user.get('pause_notifications')
+                uname = name if len(name) > 0 else chat_id
+                location = user.get('location')
                 
-                log.debug("User {} has used {} geocodings today".format(uname,user_gc_count[today]))
+                if paused: continue
                 
-                if user_gc_count[today] < _maxGC:
-                    try:
-                        geocode     = Geocoder.reverse_geocode(lat,lon)
-                        street      = geocode.route
-                        streetnum   = geocode.street_number
-                        
-                        if not streetnum: streetnum = "?"
-                        pokeDB[encounter_id] = [street, streetnum,poketime_utc,pname,True]
-                        log.info("{}: Encoded critter {} into db as: {} {}".format(encounter_id,pname,street, streetnum))
-                        
-                        gcCount = gc_counts.find({},{'counts': 1, '_id': 0})[0]['counts']
-                        
-                        if not today in gcCount: gcCount[today] = 0
-                        
-                        gcCount[today] += 1
-                        user_gc_count[today] += 1
-                        gc_counts.update({},{"$set":{'counts':gcCount}})
-                        log.info("Updated geocode-count: {} = {}".format(day_now,gcCount[today]))
-                        
-                        users.update({'chat_id': chat_id},{"$set":{'user_gc_count':user_gc_count}})
-                    except UnicodeEncodeError as e:
+                if location and len(location) > 0:
+                    max_dist = user.get('max_distance')
+                    log.debug("Max_distance of user {} is {} m".format(uname,max_dist))
+                    max_dist = _max_ping_distance if not max_dist else int(max_dist)
+                    user_lat = location[0]
+                    user_lon = location[1]
+                    
+                    dist = getDist(float(lat),float(lon),float(user_lat),float(user_lon))
+                    if dist > _max_message_distance: continue
+                
+                if pname in pokemonList:
+                    street      = "Street"
+                    streetnum   = "no"
+                    
+                    #reverse geocode
+                    if not inpokeDB:
+                        user_gc_count = user.get('user_gc_count') if 'user_gc_count' in user else {}
                         street      = str(round(lat,3))
                         streetnum   = str(round(lon,3))
-                        pokeDB[encounter_id] = [street, streetnum,poketime_utc,pname,False]
-                        log.warning("UnicodeEncodeError with pokemon {} at address {}, {}".format(pname,street,streetnum))
-                    except GeocoderError as e:
-                        street      = str(round(lat,3))
-                        streetnum   = str(round(lon,3))
-                        pokeDB[encounter_id] = [street, streetnum,poketime_utc,pname,False]
-                        log.warning("Geocode-error: {} - using coords instead".format(e))
-                    #except Exception as e:
-                     #   street      = str(round(lat,3))
-                      #  streetnum   = str(round(lon,3))
-                       # pokeDB[encounter_id] = [street, streetnum,poketime_utc,pname,False]
-                        #log.warning("Error: {} ".format(e))
+                        pokeDB[encounter_id] = [street, streetnum,poketime_utc,pname,False,[]]
                         
-                else:
-                    log.debug("User {} has over {} geocodes today, using coords instead".format(uname,user_gc_count[today]))
-                    street      = pokeDB[encounter_id][0] if encounter_id in pokeDB else str(round(lat,3))
-                    streetnum   = pokeDB[encounter_id][1] if encounter_id in pokeDB else str(round(lon,3))
-            else:
-                street = pokeDB[encounter_id][0] if encounter_id in pokeDB else "?"
-                streetnum = pokeDB[encounter_id][1] if encounter_id in pokeDB else "?"
-                log.info("Retrieved critter {} location name from DB as {}".format(pname,street+" "+streetnum))
-            
-            log.debug("Probing critter {} for user {}: Encounter-id: {}, seen-before: {},in db: {}".format(pname,uname,encounter_id,seen_before,encounter_id in pokeDB))
-            
-            custom_keyboard         = [['Pause','Location'],['Exclude ' + pname,]]
-            reply_markup            = telegram.ReplyKeyboardMarkup(custom_keyboard,one_time_keyboard=True,resize_keyboard=True)
-            
-            if not seen_before:
-                try:
-                    location = user.get('location')
-                    if location and len(location) > 0:
-                        if dist and dist < max_dist:
-                            bot.sendMessage(chat_id, text="A wild *{}* appeared {}m from you, it will disappear *{}* (in {}m {}s)".format(pname,dist,poketime,strMin,strSec),reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)
-                        if encounter_id in pokeDB and pokeDB[encounter_id][4]:
-                            bot.sendVenue(chat_id,float(lat),float(lon),pname,"{} ({}m {}s)\r\r On {} {} ({} m away)".format(poketime,strMin,strSec,street,streetnum,dist),disable_notification=True,reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)
+                        if not today in user_gc_count: user_gc_count[today] = 0
+                        
+                        log.debug("User {} has used {} geocodings today".format(uname,user_gc_count[today]))
+                        
+                        if user_gc_count[today] < _maxGC:
+                            try:
+                                geocode     = Geocoder.reverse_geocode(lat,lon)
+                                street      = geocode.route
+                                streetnum   = geocode.street_number
+                                
+                                if not streetnum: streetnum = "?"
+                                
+                                pokeDB[encounter_id][0]     = street
+                                pokeDB[encounter_id][1]     = streetnum
+                                pokeDB[encounter_id][4]     = True
+                                log.debug("{}: Encoded critter {} into db as: {} {}".format(encounter_id,pname,street, streetnum))
+                                
+                                gcCount = gc_counts.find({},{'counts': 1, '_id': 0})[0]['counts']
+                                
+                                if not today in gcCount: gcCount[today] = 0
+                                
+                                gcCount[today] += 1
+                                user_gc_count[today] += 1
+                                gc_counts.update({},{"$set":{'counts':gcCount}})
+                                log.debug("Updated geocode-count: {} = {}".format(day_now,gcCount[today]))
+                                users.update({'chat_id': chat_id},{"$set":{'user_gc_count':user_gc_count}})
+                            except UnicodeEncodeError as e:
+                                log.warning("UnicodeEncodeError with pokemon {} at address {}, {}".format(pname,street,streetnum))
+                            except GeocoderError as e:
+                                log.warning("Geocode-error: {} - using coords instead".format(e))
                         else:
-                            bot.sendVenue(chat_id,float(lat),float(lon),pname,"{} ({}m {}s)\r\r({} m away)".format(poketime,strMin,strSec,dist),disable_notification=True,reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)
+                            log.debug("User {} has over {} geocodes today, using coords instead".format(uname,user_gc_count[today]))
+                            street      = pokeDB[encounter_id][0] if encounter_id in pokeDB else str(round(lat,3))
+                            streetnum   = pokeDB[encounter_id][1] if encounter_id in pokeDB else str(round(lon,3))
                     else:
-                        bot.sendVenue(chat_id,float(lat),float(lon),pname,"{} ({}m {}s)\r\r {} {}".format(poketime,strMin,strSec,street,streetnum,),disable_notification=True,reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)
-                        
-                    log.info("User {} has requested notification of {}: notification sent".format(uname,pname))
-                except Unauthorized as e:
-                    log.warning("Unable to send notification to user {}: {}".format(uname,e))
-                    result = users.delete_one({'chat_id': chat_id})
-                    log.warning("Removed user {} from database: db returned: {}".format(uname,result))
-                except Exception as e:
-                    log.warning("Unable to send notification to user {}: {}".format(uname,e))
-                    continue
-            else:
-                log.info("Notification to {} not sent: already notified of {} on {}".format(uname,pname,street))
-    
+                        street = pokeDB[encounter_id][0] if encounter_id in pokeDB else "?"
+                        streetnum = pokeDB[encounter_id][1] if encounter_id in pokeDB else "?"
+                        log.info("Retrieved critter {} location name from DB as {}".format(pname,street+" "+streetnum))
+                    
+                    log.debug("Probing critter {} for user {}: Encounter-id: {}, in-db: {},in db: {}".format(pname,uname,encounter_id,inpokeDB,encounter_id in pokeDB))
+                    
+                    custom_keyboard         = [['Pause','Location'],['Exclude ' + pname,]]
+                    reply_markup            = telegram.ReplyKeyboardMarkup(custom_keyboard,one_time_keyboard=True,resize_keyboard=True)
+                    
+                    notifiedList = pokeDB[encounter_id][5] or []
+                    
+                    
+                    if not uname in notifiedList:
+                        log.info("Pokemon {} is not in pokedB, user= {}, list = {}".format(pokemon_id,uname,notifiedList))
+                        try:
+                            location = user.get('location')
+                            if location and len(location) > 0:
+                                if dist and dist < max_dist:
+                                    bot.sendMessage(chat_id, text="A wild *{}* appeared {}m from you, it will disappear *{}* (in {}m {}s)".format(pname,dist,poketime,strMin,strSec),reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)
+                                if encounter_id in pokeDB and pokeDB[encounter_id][4]:
+                                    bot.sendVenue(chat_id,float(lat),float(lon),pname,"{} ({}m {}s)\r\r On {} {} ({} m away)".format(poketime,strMin,strSec,street,streetnum,dist),disable_notification=True,reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)
+                                else:
+                                    bot.sendVenue(chat_id,float(lat),float(lon),pname,"{} ({}m {}s)\r\r({} m away)".format(poketime,strMin,strSec,dist),disable_notification=True,reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)
+                                    
+                            else:
+                                bot.sendVenue(chat_id,float(lat),float(lon),pname,"{} ({}m {}s)\r\r {} {}".format(poketime,strMin,strSec,street,streetnum,),disable_notification=True,reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)
+                            notifiedList.append(uname)
+                            pokeDB[encounter_id][5] = notifiedList
+                            log.info("User {} has requested notification of {}: notification sent".format(uname,pname))
+                        except Unauthorized as e:
+                            log.warning("Unable to send notification to user {}: {}".format(uname,e))
+                            result = users.delete_one({'chat_id': chat_id})
+                            log.warning("Removed user {} from database: db returned: {}".format(uname,result))
+                        except Exception as e:
+                            log.warning("Unable to send notification to user {}: {}".format(uname,e))
+                            continue
+                    else:
+                        log.info("Notification to {} not sent: already notified of {} on {}".format(uname,pname,street))
+        except NetworkTimeout as e:
+            retries += 1
+            log.warning("Connection to db timed out")
+            time.sleep(random.random() + 3)
+            if retries > 2: break
+        except PyMongoError as e:
+            retries += 1
+            log.warning("Error connecting to the db: {}".format(e))
+            time.sleep(random.random() + 3)
+            if retries > 2: break
+            continue
+            
     if time_now > time_db_check + timedelta(seconds=60):
-        log.info("Checking pokeDB for expired critters")
+        log.debug("Checking pokeDB for expired critters")
         log.debug("Size of encounter-db:{}".format(len(pokeDB)))
         time_db_check = time_now
         

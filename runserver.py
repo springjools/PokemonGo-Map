@@ -133,10 +133,13 @@ def main():
     #more custom ones
     logging.getLogger('pgoapi.auth').setLevel(logging.WARNING)
     logging.getLogger('pgoapi.auth_ptc').setLevel(logging.WARNING)
-    logging.getLogger('pogom').setLevel(logging.ERROR)
-    logging.getLogger('pogom.search').setLevel(logging.INFO)
+    logging.getLogger('pogom').setLevel(logging.INFO)
+    #logging.getLogger('pogom.search').setLevel(logging.INFO)
     
     logging.getLogger('pogom.bot').setLevel(logging.INFO)
+    logging.getLogger('pogom.connectionpool').setLevel(logging.CRITICAL)
+    logging.getLogger('urllib3.connectionpool').setLevel(logging.CRITICAL)
+    
     config['parse_pokemon'] = not args.no_pokemon
     config['parse_pokestops'] = not args.no_pokestops
     config['parse_gyms'] = not args.no_gyms
