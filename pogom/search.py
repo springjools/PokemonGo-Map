@@ -30,11 +30,12 @@ import sys
 from datetime import datetime, timedelta
 from requests import ConnectionError
 from requests.exceptions import ChunkedEncodingError
-from sqlite3 import OperationalError
+from peewee import OperationalError
 
 from operator import itemgetter
 from threading import Thread
 from queue import Queue, Empty
+import threading
 
 from pgoapi import PGoApi
 from pgoapi.utilities import f2i
@@ -59,6 +60,7 @@ _loop = 0
 time_0 = datetime.now()
 loop_notified = True
 globalstatus = {'success' : 0, 'fail' : 0, 'skip' : 0, 'noitems' : 0}
+roundLock = threading.Lock()
 
 # Apply a location jitter
 def jitterLocation(location=None, maxMeters=10):
@@ -522,44 +524,49 @@ def search_worker_thread(args, account, search_items_queue, pause_bit, encryptio
                 global _loop
                 global loop_notified
                 
-                
-                if step > 100: 
-                    loop_notified = False
-                
-                if step <= 100 and (not loop_notified):
-                    _loop += 1
-                    time_1 = datetime.now()
-                    deltaTime = time_1 - time_0
-                    dseconds = deltaTime.seconds
-        
-                    dhour = int(dseconds/3600)
-                    dmin = int((dseconds-dhour*3600)/60)
-                    dsec = int((dseconds-dhour*3600-dmin*60)/60)
-                    print ""
-                    print "*************************"
-                    print "Completed round {} in {}m {}s. Found {} pokemon and {} gyms.".format(_loop,dmin,dsec,total_pokemons,total_gyms)
-                    try:
-                        srate = round(100*(globalstatus['success']/(globalstatus['success']+globalstatus['fail']+globalstatus['skip']+globalstatus['noitems'])))
-                        print "Success rate: {} %".format(srate)
-                    except ZeroDivisionError:
-                        continue
+                with roundLock:
+                    if step > 100: 
+                        loop_notified = False
                     
-                    print "********************"
-                    print ""
-                    
-                    time_0 = datetime.now()
-                    total_gyms = 0
-                    total_pokemons = 0
-                    globalstatus = {'success' : 0, 'fail' : 0, 'skip' : 0, 'noitems' : 0}
-                    loop_notified = True
-                
+                    if step <= 100 and (not loop_notified):
+                        _loop += 1
+                        time_1 = datetime.now()
+                        deltaTime = time_1 - time_0
+                        dseconds = deltaTime.seconds
+                        laptime = str(time_1.strftime("%H:%M:%S"))
+                        dhour = int(dseconds/3600)
+                        dmin = int((dseconds-dhour*3600)/60)
+                        dsec = int(dseconds-dmin*60)
+                        
+                        minStr = str(dmin)
+                        secStr = str(dsec) if dsec >= 10 else "0" + str(dsec)
+                        
+                        print ""
+                        print "*************************"
+                        print "Completed round {} in {}m {}s. Found {} pokemon and {} gyms.".format(_loop,minStr,secStr,total_pokemons,total_gyms)
+                        try:
+                            srate = round(100*(globalstatus['success']/(globalstatus['success']+globalstatus['fail']+globalstatus['skip']+globalstatus['noitems'])))
+                            
+                            print "Success rate: {} %".format(srate)
+                            with open("var/laps.log", "a") as myfile:
+                                myfile.write("{}\t {}\t\t {}:{}\t {}\t\t\t\t {}\t\t\t {}\t\t\t {}\t\t\t {}\r".format(_loop,laptime,minStr,secStr,srate,globalstatus['success'],globalstatus['fail'],globalstatus['skip'],globalstatus['noitems']))
+                        except ZeroDivisionError:
+                            continue
+                        
+                        time_0 = datetime.now()
+                        total_gyms = 0
+                        total_pokemons = 0
+                        globalstatus = {'success' : 0, 'fail' : 0, 'skip' : 0, 'noitems' : 0}
+                        loop_notified = True
+                        print "********************"
+                        print ""
                 percent = step/ total_points
-                bar_length = 40
+                bar_length = 20
                 hashes = '#' * int(round(percent * bar_length))
                 spaces = ' ' * (bar_length - len(hashes))
-                sys.stdout.write("\rPercent: [{0}] {1}%, Round {2}: step {3} of {4}. Found: Po:{5}, Gy:{6} (Su:{7}, Fa:{8}, Sk:{9}, No:{10})   ".format(   hashes + spaces, 
+                sys.stdout.write("\rRound {2}: [{0}] {1}%\t\t Step {3} of {4}. Pok:{5}, Gym:{6} (Su:{7}, Fa:{8}, Sk:{9}, No:{10})   \r".format(   hashes + spaces, 
                                                         int(round(percent * 100)),
-                                                        _loop,
+                                                        _loop+1,
                                                         step,
                                                         total_points,
                                                         total_pokemons,
@@ -625,9 +632,9 @@ def search_worker_thread(args, account, search_items_queue, pause_bit, encryptio
                                 gyms_to_update[gym['gym_id']] = gym
                                 continue
                             except OperationalError as e:
-                                log.warning("OperationalError: {} retrying soon".format(e))
+                                log.warning("OperationalError: {}, skipping recording gym with team {}".format(e,gym['team_id']))
                                 time.sleep(random.random() + 3)
-                                gyms_to_update[gym['gym_id']] = gym
+                                #gyms_to_update[gym['gym_id']] = gym
                                 continue
                             # if we have a record of this gym already, check if the gym has been updated since our last update
                             if record.last_scanned < gym['last_modified']:
@@ -662,15 +669,20 @@ def search_worker_thread(args, account, search_items_queue, pause_bit, encryptio
                                 total_gyms += 1
                                 
                             except TypeError:
-                                log.warning("Could not parse gym: {}".format(gym))
+                                log.warning("Could not parse gym of team {} with user {}".format(gym['team_id'],account['username']))
                                 continue
 
                         status['message'] = 'Processing details of {} gyms for location {},{}...'.format(len(gyms_to_update), step_location[0], step_location[1])
                         log.debug(status['message'])
 
                         if gym_responses:
-                            parse_gyms(args, gym_responses, whq)
-
+                            try:
+                                parse_gyms(args, gym_responses, whq)
+                            except OperationalError as e:
+                                log.warning("OperationalError: {}, skipping parsing gym with team {}".format(e,gym['team_id']))
+                                time.sleep(random.random() + 3)
+                                continue
+                                
                 # Always delay the desired amount after "scan" completion
                 status['message'] += ', sleeping {}s until {}'.format(args.scan_delay, time.strftime('%H:%M:%S', time.localtime(time.time() + args.scan_delay)))
                 time.sleep(args.scan_delay)

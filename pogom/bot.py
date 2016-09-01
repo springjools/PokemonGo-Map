@@ -391,8 +391,8 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id):
                             continue
                     else:
                         log.info("Not sent: user {} already notified of {} on {}".format(uname,pname,street))
-            #if len(pokeDB) > 0:
-                #log.info("Current PokeDB: {}".format(pokeDB))
+            
+            break
         except NetworkTimeout as e:
             retries += 1
             log.warning("Connection to db timed out")
@@ -405,6 +405,7 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id):
             time.sleep(random.random() + 3)
             if retries > 2: return
             continue
+    
     if time_now > time_db_check + timedelta(seconds=60):
         log.debug("Checking pokeDB for expired critters")
         log.debug("Size of encounter-db:{}".format(len(pokeDB)))

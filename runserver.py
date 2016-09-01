@@ -27,6 +27,8 @@ from pogom.search import search_overseer_thread
 from pogom.models import init_database, create_tables, drop_tables, Pokemon, db_updater, clean_db_loop
 from pogom.webhook import wh_updater
 import socket
+from datetime import datetime
+from pygeocoder import Geocoder
 
 # Currently supported pgoapi
 pgoapi_version = "1.1.7"
@@ -212,7 +214,26 @@ def main():
     # Setup the location tracking queue and push the first location on
     new_location_queue = Queue()
     new_location_queue.put(position)
-
+    
+    #write log file headers
+    time_0 = datetime.now()
+    street      = str(round(position[0],3))
+    streetnum   = str(round(position[1],3))
+    numusers    = len(args.username)
+    log.info("Found {} workers".format(numusers))
+    try:
+        geocode     = Geocoder.reverse_geocode(position[0],position[1])
+        street      = geocode.route
+        streetnum   = geocode.street_number
+        
+        if not streetnum: streetnum = "?"
+        log.info("Beginning scan at: {} {}".format(street,streetnum))
+    except Exception as e:
+        log.warning("Geocode failed:{}".format(e))
+    with open("var/laps.log", "a") as myfile:
+        myfile.write("\r--------------------------\rStart: {} from {} {} with {} workers\r\n".format(time_0.strftime('%Y-%m-%d %H:%M:%S'),street,streetnum,numusers))
+        myfile.write("{}\t {}\t\t\t {}:{}\t {}(%) \t\t{} \t\t{} \t\t{} \t\t{}\r".format("Lap","Time","mm","ss","Success","success","failed","skipped","no items"))
+    
     # DB Updates
     db_updates_queue = Queue()
 

@@ -28,7 +28,7 @@ args = get_args()
 flaskDb = FlaskDB()
 
 db_schema_version = 7
-
+warnQueSize = 150
 
 class MyRetryDB(RetryOperationalError, PooledMySQLDatabase):
     pass
@@ -814,8 +814,8 @@ def db_updater(args, q):
                           model.__name__,
                           len(data),
                           q.qsize())
-                if q.qsize() > 50:
-                    log.warning("DB queue is > 50 (@%d); try increasing --db-threads", q.qsize())
+                if q.qsize() > warnQueSize:
+                    log.warning("DB queue is > {} ({}); try increasing --db-threads".format(warnQueSize,q.qsize()))
 
         except Exception as e:
             log.exception('Exception in db_updater: %s', e)
