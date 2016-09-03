@@ -553,7 +553,7 @@ def removeserver(bot, update, args):
     chat_id = update.message.chat_id
     uname = update.message.chat.username
     
-    serverList = users.find({'chat_id' : chat_id}).get('server_list')
+    serverList = list(users.find({'chat_id' : chat_id},{'server_list': 1, '_id': 0}))[0]['server_list']
     if not serverList: serverList = {}
     
     if len(serverList) == 0:

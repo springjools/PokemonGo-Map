@@ -264,9 +264,9 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id):
         inpokeDB = False
         
     if inpokeDB:
-        log.info("Pokemon {} is already in pokedB: {}, as {}".format(pokemon_id,inpokeDB,pokeDB[encounter_id]))
+        log.info("Pokemon {} is already in pokedB".format(pname))
     else:
-        log.debug("Pokemon {} is not in pokedB".format(pokemon_id))
+        log.debug("Pokemon {} is not in pokedB".format(pname))
         
     retries = 0
     while retries < 2:
@@ -349,6 +349,8 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id):
                 else:
                     street = pokeDB[encounter_id][0] if encounter_id in pokeDB else "?"
                     streetnum = pokeDB[encounter_id][1] if encounter_id in pokeDB else "?"
+                    if not street: street = "Unknown street"
+                    if not streetnum: streetnum = "?"
                     log.info("Retrieved critter {} location name from DB as {}".format(pname,street+" "+streetnum))
                 
                 log.debug("Probing critter {} for user {}: Encounter-id: {}, in-db: {},in db: {}".format(pname,uname,encounter_id,inpokeDB,encounter_id in pokeDB))

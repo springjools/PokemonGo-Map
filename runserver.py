@@ -232,7 +232,7 @@ def main():
         log.warning("Geocode failed:{}".format(e))
     with open("var/laps.log", "a") as myfile:
         myfile.write("\r--------------------------\rStart: {} from {} {} with {} workers\r\n".format(time_0.strftime('%Y-%m-%d %H:%M:%S'),street,streetnum,numusers))
-        myfile.write("{}\t {}\t\t\t {}:{}\t {}(%) \t\t{} \t\t{} \t\t{} \t\t{}\r".format("Lap","Time","mm","ss","Success","success","failed","skipped","no items"))
+        myfile.write("{}\t {}\t\t\t {}:{}\t {}(%) \t{} \t\t{} \t\t{} \t{} \t{} \t{}\r".format("Lap","Time","mm","ss","Success","poke","gyms","success","fail","skip","no items"))
     
     # DB Updates
     db_updates_queue = Queue()

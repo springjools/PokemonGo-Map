@@ -529,42 +529,53 @@ def search_worker_thread(args, account, search_items_queue, pause_bit, encryptio
                         loop_notified = False
                     
                     if step <= 100 and (not loop_notified):
-                        _loop += 1
                         time_1 = datetime.now()
                         deltaTime = time_1 - time_0
                         dseconds = deltaTime.seconds
-                        laptime = str(time_1.strftime("%H:%M:%S"))
                         dhour = int(dseconds/3600)
                         dmin = int((dseconds-dhour*3600)/60)
                         dsec = int(dseconds-dmin*60)
-                        
-                        minStr = str(dmin)
-                        secStr = str(dsec) if dsec >= 10 else "0" + str(dsec)
-                        
-                        print ""
-                        print "*************************"
-                        print "Completed round {} in {}m {}s. Found {} pokemon and {} gyms.".format(_loop,minStr,secStr,total_pokemons,total_gyms)
-                        try:
-                            srate = round(100*(globalstatus['success']/(globalstatus['success']+globalstatus['fail']+globalstatus['skip']+globalstatus['noitems'])))
-                            
-                            print "Success rate: {} %".format(srate)
-                            with open("var/laps.log", "a") as myfile:
-                                myfile.write("{}\t {}\t\t {}:{}\t {}\t\t\t\t {}\t\t\t {}\t\t\t {}\t\t\t {}\r".format(_loop,laptime,minStr,secStr,srate,globalstatus['success'],globalstatus['fail'],globalstatus['skip'],globalstatus['noitems']))
-                        except ZeroDivisionError:
-                            continue
-                        
-                        time_0 = datetime.now()
-                        total_gyms = 0
-                        total_pokemons = 0
-                        globalstatus = {'success' : 0, 'fail' : 0, 'skip' : 0, 'noitems' : 0}
-                        loop_notified = True
-                        print "********************"
-                        print ""
+                        if dmin > 5:
+							_loop += 1
+							laptime = str(time_1.strftime("%H:%M:%S"))
+							minStr = str(dmin)
+							secStr = str(dsec) if dsec >= 10 else "0" + str(dsec)
+							
+							print ""
+							print "*************************"
+							print "Completed round {} in {}m {}s. Found {} pokemon and {} gyms.".format(_loop,minStr,secStr,total_pokemons,total_gyms)
+							try:
+								srate = round(100*(globalstatus['success']/(globalstatus['success']+globalstatus['fail']+globalstatus['skip']+globalstatus['noitems'])))
+								
+								print "Success rate: {} %".format(srate)
+								with open("var/laps.log", "a") as myfile:
+									myfile.write("{}\t {}\t\t {}:{}\t {}\t\t\t{}\t\t {}\t\t{}\t\t{}\t\t{}\t\t\t {}\r".format(
+												_loop,
+												laptime,
+												minStr,
+												secStr,
+												srate,
+												total_pokemons,
+												total_gyms,
+												globalstatus['success'],
+												globalstatus['fail'],
+												globalstatus['skip'],
+												globalstatus['noitems']))
+							except ZeroDivisionError:
+								continue
+							
+							time_0 = datetime.now()
+							total_gyms = 0
+							total_pokemons = 0
+							globalstatus = {'success' : 0, 'fail' : 0, 'skip' : 0, 'noitems' : 0}
+							loop_notified = True
+							print "********************"
+							print ""
                 percent = step/ total_points
-                bar_length = 20
+                bar_length = 32
                 hashes = '#' * int(round(percent * bar_length))
                 spaces = ' ' * (bar_length - len(hashes))
-                sys.stdout.write("\rRound {2}: [{0}] {1}%\t\t Step {3} of {4}. Pok:{5}, Gym:{6} (Su:{7}, Fa:{8}, Sk:{9}, No:{10})   \r".format(   hashes + spaces, 
+                sys.stdout.write("\rRound {2}:       [{0}]  {1}%\t    Step {3} of {4}. Pok:{5}, Gym:{6} (Su:{7}, Fa:{8}, Sk:{9}, No:{10})   \r".format(   hashes + spaces, 
                                                         int(round(percent * 100)),
                                                         _loop+1,
                                                         step,
@@ -686,10 +697,10 @@ def search_worker_thread(args, account, search_items_queue, pause_bit, encryptio
                 # Always delay the desired amount after "scan" completion
                 status['message'] += ', sleeping {}s until {}'.format(args.scan_delay, time.strftime('%H:%M:%S', time.localtime(time.time() + args.scan_delay)))
                 time.sleep(args.scan_delay)
-                if status['fail']:      globalstatus['fail'] += 1 
-                if status['success']:   globalstatus['success'] += 1 
-                if status['noitems']:   globalstatus['noitems'] += 1
-                if status['skip']:      globalstatus['skip'] += 1 
+                if status['fail'] and status['fail'] > 0:           globalstatus['fail'] += 1 
+                if status['success'] and status['success'] > 0:     globalstatus['success'] += 1 
+                if status['noitems'] and status['noitems'] > 0:     globalstatus['noitems'] += 1
+                if status['skip'] and status['skip'] > 0:           globalstatus['skip'] += 1 
         
         # catch any process exceptions, log them, and continue the thread
         except Exception as e:
