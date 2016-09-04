@@ -30,6 +30,8 @@ import socket
 from datetime import datetime
 from pygeocoder import Geocoder
 
+from pogom.proxy import check_proxies
+
 # Currently supported pgoapi
 pgoapi_version = "1.1.7"
 
@@ -260,6 +262,13 @@ def main():
         t.start()
 
     if not args.only_server:
+
+        # Check all proxies before continue so we know they are good
+        if args.proxy:
+
+            # Overwrite old args.proxy with new working list
+            args.proxy = check_proxies(args)
+
         # Gather the pokemons!
 
         # check the sort of scan
