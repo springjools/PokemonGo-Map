@@ -267,6 +267,8 @@ pokemonList = {
 
 GlensList =["Aerodactyl", "Alakazam", "Arcanine", "Dragonair", "Arbok", "Articuno", "Chansey", "Charmeleon", "Dragonite", "Dratini", "Eevee", "Electrode", "Farfetch'd", "Flareon", "Growlithe", "Gyarados", "Hitmonchan", "Hitmonlee", "Jolteon", "Lapras", "Dewgong", "Lickitung", "Machamp", "Machoke", "Marowak", "Mew", "Mewtwo", "Moltres", "Muk", "Nidoking", "Nidoqueen", "Ninetales", "Omanyte", "Omastar", "Persian", "Pikachu", "Pinsir", "Ponyta", "Primeape", "Porygon", "Raichu", "Rapidash", "Scyther", "Snorlax", "Vaporeon", "Zapdos"]
 
+BirgersList =["Alakazam", "Arcanine", "Articuno", "Chansey", "Dragonite", "Farfetch'd", "Flareon", "Gyarados", "Jolteon", "Lapras", "Machamp", "Mew", "Mewtwo", "Moltres", "Raichu", "Snorlax", "Vaporeon", "Zapdos"]
+
 def ping(host):
     """
     Returns True if host responds to a ping request
@@ -286,7 +288,7 @@ def start(bot, update):
     uname = update.message.chat.username
     
     if users.find({'chat_id': chat_id}).count() == 0:
-        users.insert({'name' : uname, 'chat_id': chat_id, 'notify_list' : [],'server_list' : []})
+        users.insert({'name' : uname, 'chat_id': chat_id, 'notify_list' : [],'important_list' : [],'server_list' : []})
         logger.info("Created new user with name = {} and with  {} entries".format(uname,users.find({'chat_id' : chat_id}).count()))
         
     custom_keyboard         = defaultKeyboard
@@ -389,8 +391,22 @@ def addpokemon(bot, update,args):
         #print "T: {}, L: {}, D = {}".format(type(selectedList),len(selectedList),selectedList)
         
         custom_keyboard         = [['Cancel', 'Add ALL','Glen\'s List']]
+        i = 0
         for pokename in alphaList:  
             if not pokename in selectedList:
+                i += 1
+                #print custom_keyboard
+                if i == 1:
+                    custom_keyboard.append([pokename])
+                elif i == 2:
+                    i = 0
+                    lastItem = custom_keyboard[-1]
+                    lastItem.extend([pokename])
+                else:
+                    lastItem = custom_keyboard[-1]
+                    lastItem.extend([pokename])
+                
+            
                 custom_keyboard.append([pokename])
                 
         reply_markup            = telegram.ReplyKeyboardMarkup(custom_keyboard,one_time_keyboard=False)
@@ -399,6 +415,88 @@ def addpokemon(bot, update,args):
         _listener[uname] = 'addpokemon'
         
         logger.debug("Set listener of {} to: {}".format(uname,_listener[uname] if uname in _listener else "?"))
+          
+def addimportant(bot, update,args):
+    
+    logger = logging.getLogger('poke' + "." + 'addimportant')
+    logger.debug("Entering add: args = {}".format(args))
+    
+    chat_id = update.message.chat_id
+    uname = update.message.chat.username
+    global _listener
+    
+    
+    
+    if args is not None and len(args) > 0:
+        logger.debug("args = {}, args[0] = {}".format(args,args[0]))
+        
+        if args[0] == 'Birger':
+            selectedList = []
+            for poke in BirgersList:
+                selectedList.append(poke)
+                users.update({'chat_id': chat_id},{"$set":{'important_list': selectedList}})
+                                
+            custom_keyboard         = defaultKeyboard
+            reply_markup            = telegram.ReplyKeyboardMarkup(custom_keyboard,one_time_keyboard=True)
+            bot.sendMessage(chat_id, text="Ok, added the Birger's List (TM) selection to the important list",reply_markup=reply_markup)
+            return
+            
+        poke = args[0]
+        if poke in pokemonList.values():
+            vip_list = list(users.find({'chat_id' : chat_id},{'important_list': 1, '_id': 0}))[0]
+            if not vip_list:
+                selectedList = []
+            else:
+                selectedList = list(users.find({'chat_id' : chat_id},{'important_list': 1, '_id': 0}))[0]['important_list']
+            print "user: {}, list: {}".format(uname,selectedList)
+            if not poke in selectedList:
+                selectedList.append(poke)
+                users.update({'chat_id': chat_id},{"$set":{'important_list': selectedList}})
+                logger.info("{}: Added pokemon '{}' to important-list'".format(uname,poke))
+                
+                bot.sendMessage(chat_id, text="Added pokemon '{}' to important list".format(poke))
+                
+            else:
+                logger.info("Pokemon '{}' is already in important-list".format(poke))
+                bot.sendMessage(chat_id, text="Pokemon '{}' is already in important-list".format(poke))
+        else:
+            logger.warning("Didn't find any pokemon called '{}'".format(poke))
+            bot.sendMessage(chat_id, text="Didn't find any pokemon called '{}'".format(poke))
+        
+    else:   
+        alphaList = sorted(pokemonList.values())
+        vip_list = list(users.find({'chat_id' : chat_id},{'important_list': 1, '_id': 0}))[0]
+        notifyList = list(users.find({'chat_id' : chat_id},{'notify_list': 1, '_id': 0}))[0]['notify_list']
+        
+        if not vip_list:
+            selectedList = []
+        else:
+            selectedList = list(users.find({'chat_id' : chat_id},{'important_list': 1, '_id': 0}))[0]['important_list']
+        #print "user: {}, list: {}".format(uname,selectedList)
+                
+        custom_keyboard         = [['Cancel', 'Add ALL','Birger\'s List']]
+        i = 0
+        for pokename in alphaList:
+            if not pokename in selectedList and pokename in notifyList:
+                i += 1
+                #print custom_keyboard
+                if i == 1:
+                    custom_keyboard.append([pokename])
+                elif i == 2:
+                    i = 0
+                    lastItem = custom_keyboard[-1]
+                    lastItem.extend([pokename])
+                else:
+                    lastItem = custom_keyboard[-1]
+                    lastItem.extend([pokename])
+                    
+        reply_markup            = telegram.ReplyKeyboardMarkup(custom_keyboard,one_time_keyboard=False)
+        
+        bot.sendMessage(chat_id, text="Enter pokemon to add to important list:",reply_markup=reply_markup)
+        _listener[uname] = 'addimportant'
+        
+        logger.debug("Set listener of {} to: {}".format(uname,_listener[uname] if uname in _listener else "?"))
+          
           
 def removepokemon(bot, update,args):
     logger = logging.getLogger('poke' + "." + 'remove')
@@ -443,6 +541,50 @@ def removepokemon(bot, update,args):
                 custom_keyboard.append([pokename])
             reply_markup            = telegram.ReplyKeyboardMarkup(custom_keyboard,one_time_keyboard=False)
             bot.sendMessage(chat_id, text="{}' removed".format(poke),reply_markup=reply_markup)
+
+def removeimportant(bot, update,args):
+    logger = logging.getLogger('poke' + "." + 'removeimportant')
+    logger.debug("Entering remove: args = {}".format(args))
+    global _listener
+    
+    chat_id = update.message.chat_id
+    uname = update.message.chat.username
+    
+    selectedList = list(users.find({'chat_id' : chat_id},{'important_list': 1, '_id': 0}))[0]['important_list']
+        
+    if len(selectedList) == 0:
+        bot.sendMessage(chat_id, text="Pokemon list empty!")
+        return
+    
+    custom_keyboard         = [['Cancel','REMOVE ALL']]
+    for pokename in selectedList:
+        custom_keyboard.append([pokename])
+    reply_markup            = telegram.ReplyKeyboardMarkup(custom_keyboard,one_time_keyboard=False)
+    
+    bot.sendMessage(chat_id, text="Remove pokemon from important list:",reply_markup=reply_markup)
+    _listener[uname] = 'removeimportant'
+    logger.debug("Set listener of {} to: {}".format(uname,_listener[uname] if uname in _listener else "?"))
+    
+    if args is not None and len(args) > 0:
+        if args[0] == 'REMOVE ALL':
+            selectedList = []
+            users.update({'chat_id': chat_id},{"$set":{'important_list': selectedList}})
+            custom_keyboard         = defaultKeyboard
+            reply_markup            = telegram.ReplyKeyboardMarkup(custom_keyboard,one_time_keyboard=True)
+            bot.sendMessage(chat_id, text="Ok, emptied the whole list",reply_markup=reply_markup)
+            return
+                
+        
+        poke = args[0]
+        if poke in selectedList: 
+            selectedList.remove(poke)
+            users.update({'chat_id': chat_id},{"$set":{'important_list': selectedList}})
+            
+            custom_keyboard         = [['Cancel','REMOVE ALL']]
+            for pokename in selectedList:
+                custom_keyboard.append([pokename])
+            reply_markup            = telegram.ReplyKeyboardMarkup(custom_keyboard,one_time_keyboard=False)
+            bot.sendMessage(chat_id, text="{}' removed".format(poke),reply_markup=reply_markup)
             
 def listpokemon(bot, update):
     logger = logging.getLogger('poke' + "." + 'list')
@@ -457,7 +599,21 @@ def listpokemon(bot, update):
     reply_markup            = telegram.ReplyKeyboardMarkup(custom_keyboard,one_time_keyboard=True)
     
     bot.sendMessage(chat_id, text="Currently notifying of following Pokemons:\n\n" + '\n'.join(sorted(selectedList)),reply_markup=reply_markup) 
-   
+
+def listimportant(bot, update):
+    logger = logging.getLogger('poke' + "." + 'listimportant')
+    logger.debug("Entering list pokemon")
+    
+    chat_id = update.message.chat_id
+    uname = update.message.chat.username
+    
+    selectedList = list(users.find({'chat_id' : chat_id},{'important_list': 1, '_id': 0}))[0]['important_list']
+    
+    custom_keyboard         = defaultKeyboard
+    reply_markup            = telegram.ReplyKeyboardMarkup(custom_keyboard,one_time_keyboard=True)
+    
+    bot.sendMessage(chat_id, text="Currently notifying of following Pokemons:\n\n" + '\n'.join(sorted(selectedList)),reply_markup=reply_markup)
+    
 def setlocation(bot, update,args):
     logger = logging.getLogger('poke' + "." + 'setlocation')
     
@@ -694,6 +850,12 @@ def cli_noncommand(bot, update):
         removepokemon(bot, update, [])
     elif text == 'List':
         listpokemon(bot, update)
+    elif text == 'Addimportant':
+        addimportant(bot, update, [])
+    elif text == 'Removeimportant':
+        removeimportant(bot, update, [])
+    elif text == 'Listimportant':
+        listimportant(bot, update)
     elif text == 'Help':
        help(bot, update)
     elif text == 'Location':
@@ -720,6 +882,13 @@ def cli_noncommand(bot, update):
                 addpokemon(bot, update, [text])
         elif uname in _listener and _listener[uname] == "removepokemon":
             removepokemon(bot, update, [text])
+        elif uname in _listener and _listener[uname] == "addimportant":
+            if text.startswith('Birger'):
+                addimportant(bot, update, ["Birger"])
+            else:
+                addimportant(bot, update, [text])
+        elif uname in _listener and _listener[uname] == "removeimportant":
+            removeimportant(bot, update, [text])
         elif uname in _listener and _listener[uname] == "removeserver":
             removeserver(bot, update, [text])
         elif uname in _listener and _listener[uname] == "setdistance":
@@ -877,6 +1046,9 @@ def main():
     dp.add_handler(CommandHandler("add", addpokemon,pass_args=True))
     dp.add_handler(CommandHandler("remove", removepokemon,pass_args=True))
     dp.add_handler(CommandHandler("list", listpokemon))
+    dp.add_handler(CommandHandler("addimportant", addimportant,pass_args=True))
+    dp.add_handler(CommandHandler("removeimportant", removeimportant,pass_args=True))
+    dp.add_handler(CommandHandler("listimportant", listimportant))
     dp.add_handler(CommandHandler("pause", pause))
     dp.add_handler(CommandHandler("resume", resume))
     dp.add_handler(CommandHandler("addserver", addserver,pass_args=False))

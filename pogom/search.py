@@ -42,8 +42,7 @@ from pgoapi import PGoApi
 from pgoapi.utilities import f2i
 from pgoapi import utilities as util
 from pgoapi.exceptions import AuthException
-
-from .models import parse_map, Pokemon, hex_bounds, GymDetails, parse_gymsfrom .models import parse_map, Pokemon, hex_bounds, GymDetails, parse_gyms, MainWorker, WorkerStatus
+from .models import parse_map, Pokemon, hex_bounds, GymDetails, parse_gyms, MainWorker, WorkerStatus
 from .transform import generate_location_steps
 from .fakePogoApi import FakePogoApi
 from .utils import now
@@ -680,41 +679,41 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                         dmin = int((dseconds-dhour*3600)/60)
                         dsec = int(dseconds-dmin*60)
                         if dmin > 5:
-							_loop += 1
-							laptime = str(time_1.strftime("%H:%M:%S"))
-							minStr = str(dmin)
-							secStr = str(dsec) if dsec >= 10 else "0" + str(dsec)
-							
-							print ""
-							print "*************************"
-							print "Completed round {} in {}m {}s. Found {} pokemon and {} gyms.".format(_loop,minStr,secStr,total_pokemons,total_gyms)
-							try:
-								srate = round(100*(globalstatus['success']/(globalstatus['success']+globalstatus['fail']+globalstatus['skip']+globalstatus['noitems'])))
-								
-								print "Success rate: {} %".format(srate)
-								with open("var/laps.log", "a") as myfile:
-									myfile.write("{}\t {}\t\t {}:{}\t {}\t\t\t{}\t\t {}\t\t{}\t\t{}\t\t{}\t\t\t {}\r".format(
-												_loop,
-												laptime,
-												minStr,
-												secStr,
-												srate,
-												total_pokemons,
-												total_gyms,
-												globalstatus['success'],
-												globalstatus['fail'],
-												globalstatus['skip'],
-												globalstatus['noitems']))
-							except ZeroDivisionError:
-								continue
-							
-							time_0 = datetime.now()
-							total_gyms = 0
-							total_pokemons = 0
-							globalstatus = {'success' : 0, 'fail' : 0, 'skip' : 0, 'noitems' : 0}
-							loop_notified = True
-							print "********************"
-							print ""
+                            _loop += 1
+                            laptime = str(time_1.strftime("%H:%M:%S"))
+                            minStr = str(dmin)
+                            secStr = str(dsec) if dsec >= 10 else "0" + str(dsec)
+                            
+                            print ""
+                            print "*************************"
+                            print "Completed round {} in {}m {}s. Found {} pokemon and {} gyms.".format(_loop,minStr,secStr,total_pokemons,total_gyms)
+                            try:
+                                srate = round(100*(globalstatus['success']/(globalstatus['success']+globalstatus['fail']+globalstatus['skip']+globalstatus['noitems'])))
+                                
+                                print "Success rate: {} %".format(srate)
+                                with open("var/laps.log", "a") as myfile:
+                                    myfile.write("{}\t {}\t\t {}:{}\t {}\t\t\t{}\t\t {}\t\t{}\t\t{}\t\t{}\t\t\t {}\r".format(
+                                                _loop,
+                                                laptime,
+                                                minStr,
+                                                secStr,
+                                                srate,
+                                                total_pokemons,
+                                                total_gyms,
+                                                globalstatus['success'],
+                                                globalstatus['fail'],
+                                                globalstatus['skip'],
+                                                globalstatus['noitems']))
+                            except ZeroDivisionError:
+                                continue
+                            
+                            time_0 = datetime.now()
+                            total_gyms = 0
+                            total_pokemons = 0
+                            globalstatus = {'success' : 0, 'fail' : 0, 'skip' : 0, 'noitems' : 0}
+                            loop_notified = True
+                            print "********************"
+                            print ""
                 percent = step/ total_points
                 bar_length = 32
                 hashes = '#' * int(round(percent * bar_length))
@@ -737,9 +736,14 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                 # Let the api know where we intend to be for this loop
                 api.set_position(*step_location)
 
-                # Ok, let's get started -- check our login status                
-                check_login(args, account, api, step_location, status['proxy_url'])
-
+                # Ok, let's get started -- check our login status
+                try:
+                    check_login(args, account, api, step_location, status['proxy_url'])
+                except ConnectionError as e:
+                    log.warn("Connection error: trying again soon")
+                    time.sleep(30)
+                    continue
+                    
                 # Make the actual request (finally!)
                 response_dict = map_request(api, step_location, args.jitter)
 
@@ -759,7 +763,7 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                     status['message'] = 'Search at {:6f},{:6f} completed with {} finds'.format(step_location[0], step_location[1], parsed['count'])
                     status['fail'] = 0
                     log.debug(status['message'])
-                    if parsed['count2']:
+                    if 'count2' in parsed and parsed['count2']:
                         total_pokemons += parsed['count2'][0] 
                         
                 except KeyError:

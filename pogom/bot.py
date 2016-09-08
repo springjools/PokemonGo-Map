@@ -282,7 +282,11 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id):
                 uname = name if len(name) > 0 else chat_id
                 location = user.get('location')
                 
+                importantList = user.get('important_list')
+                
                 if not pname in pokemonList: continue
+                
+                
                 
                 if chat_id not in locks: locks[chat_id] = threading.Lock()
                 lock = locks[chat_id]
@@ -297,6 +301,7 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id):
                     user_lon = location[1]
                     
                     dist = getDist(float(lat),float(lon),float(user_lat),float(user_lon))
+                    
                     if dist > _max_message_distance: continue
                 
                 street      = "Street"
@@ -369,13 +374,12 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id):
                         try:
                             location = user.get('location')
                             if location and len(location) > 0:
-                                if dist and dist < max_dist:
+                                if dist and (dist < max_dist or (importantList and len(importantList) > 0 and pname in importantList)):
                                     bot.sendMessage(chat_id, text="A wild *{}* appeared {}m from you, it will disappear *{}* (in {}m {}s)".format(pname,dist,poketime,strMin,strSec),reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)
                                 if encounter_id in pokeDB and pokeDB[encounter_id][4]:
-                                    bot.sendVenue(chat_id,float(lat),float(lon),pname,"{} ({}m {}s)\r\r On {} {} ({} m away)".format(poketime,strMin,strSec,street,streetnum,dist),disable_notification=True,reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)
+                                    bot.sendVenue(chat_id,float(lat),float(lon),pname,"{0} ({1}m {2}s). {5}m away\r\r On {3} {4}".format(poketime,strMin,strSec,street,streetnum,dist),disable_notification=True,reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)
                                 else:
-                                    bot.sendVenue(chat_id,float(lat),float(lon),pname,"{} ({}m {}s)\r\r({} m away)".format(poketime,strMin,strSec,dist),disable_notification=True,reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)
-                                    
+                                    bot.sendVenue(chat_id,float(lat),float(lon),pname,"{0} ({1}m {2}s), {3}m away\r\r()".format(poketime,strMin,strSec,dist),disable_notification=True,reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)
                             else:
                                 bot.sendVenue(chat_id,float(lat),float(lon),pname,"{} ({}m {}s)\r\r {} {}".format(poketime,strMin,strSec,street,streetnum,),disable_notification=True,reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)                        
                             nList.append(uname)
