@@ -645,7 +645,26 @@ def setdistance(bot, update,args):
     else:
         bot.sendMessage(chat_id, text="Notify of pokemons how far from you? Enter the distance in meters (default=2000)\r\r(Pokemons further away will still show up as a message but there will be no notification on iOS and silent on android)")
         _listener[uname] = 'setdistance'
+
+
+def ignore(bot, update):
+    logger = logging.getLogger('poke' + "." + 'ignoreoutside')
     
+    chat_id = update.message.chat_id
+    uname = update.message.chat.username
+    
+    ignore_setting_item = list(users.find({'chat_id' : chat_id},{'ignore_setting': 1, '_id': 0}))[0]
+    ignore_setting = ignore_setting_item.get('ignore_setting') if ignore_setting_item else False
+    
+    new_setting = not ignore_setting
+    
+    users.update({'chat_id': chat_id},{"$set":{'ignore_setting': new_setting}})
+    custom_keyboard         = defaultKeyboard
+    reply_markup            = telegram.ReplyKeyboardMarkup(custom_keyboard,one_time_keyboard=True)
+    bot.sendMessage(chat_id, text="Ignoring notifications outside maximum distance: {}".format(new_setting),reply_markup=reply_markup)
+    _listener[uname] = None
+    return
+        
 def addserver(bot, update):
     
     logger = logging.getLogger('poke' + "." + 'addserver')
@@ -1024,7 +1043,7 @@ def main():
         print "Google-geocode counts:"
         gcc = gc_counts.find({},{'counts': 1, '_id': 0})[0]['counts']
         
-        for key,item in gcc.items():
+        for key,item in sorted(gcc.items()):
             print "--> {}: {}".format(key,item)
     else:
         time_now = datetime.utcnow()
@@ -1051,6 +1070,7 @@ def main():
     dp.add_handler(CommandHandler("listimportant", listimportant))
     dp.add_handler(CommandHandler("pause", pause))
     dp.add_handler(CommandHandler("resume", resume))
+    dp.add_handler(CommandHandler("ignore", ignore))
     dp.add_handler(CommandHandler("addserver", addserver,pass_args=False))
     dp.add_handler(CommandHandler("setlocation", setlocation,pass_args=True))
     dp.add_handler(CommandHandler("setdistance", setdistance,pass_args=True))

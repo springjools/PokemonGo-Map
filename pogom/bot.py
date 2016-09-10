@@ -283,10 +283,10 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id):
                 location = user.get('location')
                 
                 importantList = user.get('important_list')
+                ignore_setting_item = list(users.find({'chat_id' : chat_id},{'ignore_setting': 1, '_id': 0}))[0]
+                ignore_setting = ignore_setting_item.get('ignore_setting') if ignore_setting_item else False
                 
                 if not pname in pokemonList: continue
-                
-                
                 
                 if chat_id not in locks: locks[chat_id] = threading.Lock()
                 lock = locks[chat_id]
@@ -302,8 +302,10 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id):
                     
                     dist = getDist(float(lat),float(lon),float(user_lat),float(user_lon))
                     
+                    
                     if dist > _max_message_distance: continue
-                
+                    
+                    if importantList and len(importantList) > 0 and (pname not in importantList) and ignore_setting and dist > max_dist : continue
                 street      = "Street"
                 streetnum   = "no"
                 
