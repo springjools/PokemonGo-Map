@@ -299,12 +299,9 @@ def main():
     if not args.only_server:
 
         # Check all proxies before continue so we know they are good
-<<<<<<< HEAD
-        if args.proxy:
-=======
+
         if args.proxy and not args.proxy_skip_check:
 
->>>>>>> b915646ea35f7aff59270c5c37039b46703e196b
             # Overwrite old args.proxy with new working list
             args.proxy = check_proxies(args)
 

@@ -243,7 +243,7 @@ def get_args():
                             field_error = 'password'
 
                     # If the number of fields is three then assume this is "ptc,username,password". As requested..
-                    if num_fields == 3:
+                    if num_fields >= 3:
                         # If field 0 is not ptc or google something is wrong!
                         if fields[0].lower() == 'ptc' or fields[0].lower() == 'google':
                             args.auth_service.append(fields[0])
