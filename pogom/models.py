@@ -629,6 +629,7 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, a
     pokemons = {}
     pokestops = {}
     gyms = {}
+    skipped = 0
     
     try:
         cells = map_dict['responses']['GET_MAP_OBJECTS']['map_cells']
