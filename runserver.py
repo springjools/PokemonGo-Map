@@ -78,7 +78,7 @@ if not hasattr(pgoapi, "__version__") or StrictVersion(pgoapi.__version__) < Str
     log.critical("It seems `pgoapi` is not up-to-date. You must run pip install -r requirements.txt again")
     sys.exit(1)
 
-bannedIPList = ['192.168.1.101', '82.181.22.219']
+bannedIPList = ['82.181.22.219']
 
 # Patch to make exceptions in threads cause an exception.
 def install_thread_excepthook():
