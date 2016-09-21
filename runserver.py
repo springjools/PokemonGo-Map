@@ -25,11 +25,32 @@ from pogom.utils import get_args, get_encryption_lib_path
 from pogom.search import search_overseer_thread
 from pogom.models import init_database, create_tables, drop_tables, Pokemon, db_updater, clean_db_loop
 from pogom.webhook import wh_updater
+import socket
+from datetime import datetime
+from pygeocoder import Geocoder
 
 from pogom.proxy import check_proxies
 
 # Currently supported pgoapi
 pgoapi_version = "1.1.7"
+
+logging.basicConfig(level=logging.DEBUG,
+    format='%(asctime)s %(threadName)16s  %(name)-14s %(levelname)-8s %(message)s',
+    datefmt='%m-%d %H:%M',
+    filename= 'var/server.log',
+    filemode='w')
+# define a Handler which writes INFO messages or higher to the sys.stderr
+console = logging.StreamHandler()
+console.setLevel(logging.INFO)
+# set a format which is simpler for console use
+formatter = logging.Formatter('%(asctime)s [%(threadName)16s][%(module)14s][%(levelname)8s] %(message)s',datefmt='%m-%d %H:%M:%S')
+# tell the handler to use this format
+console.setFormatter(formatter)
+
+# add the handler to the root logger
+if len(logging.getLogger('').handlers) <= 1:
+    logging.getLogger('').addHandler(console)
+#coloredlogs.install(level='INFO')
 
 # Moved here so logger is configured at load time
 logging.basicConfig(format='%(asctime)s [%(threadName)16s][%(module)14s][%(levelname)8s] %(message)s')
@@ -57,6 +78,7 @@ if not hasattr(pgoapi, "__version__") or StrictVersion(pgoapi.__version__) < Str
     log.critical("It seems `pgoapi` is not up-to-date. You must run pip install -r requirements.txt again")
     sys.exit(1)
 
+bannedIPList = ['82.181.22.219']
 
 # Patch to make exceptions in threads cause an exception.
 def install_thread_excepthook():
@@ -88,7 +110,6 @@ def handle_exception(exc_type, exc_value, exc_traceback):
 
     log.error("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
 
-
 def main():
     # Patch threading to make exceptions catchable
     install_thread_excepthook()
@@ -97,6 +118,18 @@ def main():
     sys.excepthook = handle_exception
 
     args = get_args()
+
+    
+    #check if we are on blacklisted ip
+    
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.connect(('google.com', 0))
+    ip = s.getsockname()[0]
+    
+    if ip in bannedIPList:
+        print "Exit: not connected to VPN protection"
+        sys.exit(1)
+    
 
     # Check for depreciated argumented
     if args.debug:
@@ -135,7 +168,17 @@ def main():
     logging.getLogger('pgoapi.pgoapi').setLevel(logging.WARNING)
     logging.getLogger('pgoapi.rpc_api').setLevel(logging.INFO)
     logging.getLogger('werkzeug').setLevel(logging.ERROR)
-
+    
+    #more custom ones
+    logging.getLogger('pgoapi.auth').setLevel(logging.WARNING)
+    logging.getLogger('pgoapi.auth_ptc').setLevel(logging.WARNING)
+    logging.getLogger('pogom').setLevel(logging.INFO)
+    #logging.getLogger('pogom.search').setLevel(logging.INFO)
+    logging.getLogger('pogom.models').setLevel(logging.WARNING)
+    logging.getLogger('pogom.bot').setLevel(logging.INFO)
+    logging.getLogger('pogom.connectionpool').setLevel(logging.CRITICAL)
+    logging.getLogger('urllib3.connectionpool').setLevel(logging.CRITICAL)
+    
     config['parse_pokemon'] = not args.no_pokemon
     config['parse_pokestops'] = not args.no_pokestops
     config['parse_gyms'] = not args.no_gyms
@@ -209,7 +252,26 @@ def main():
     # Setup the location tracking queue and push the first location on
     new_location_queue = Queue()
     new_location_queue.put(position)
-
+    
+    #write log file headers
+    time_0 = datetime.now()
+    street      = str(round(position[0],3))
+    streetnum   = str(round(position[1],3))
+    numusers    = len(args.username)
+    log.info("Found {} workers".format(numusers))
+    try:
+        geocode     = Geocoder.reverse_geocode(position[0],position[1])
+        street      = geocode.route
+        streetnum   = geocode.street_number
+        
+        if not streetnum: streetnum = "?"
+        log.info("Beginning scan at: {} {}".format(street,streetnum))
+    except Exception as e:
+        log.warning("Geocode failed:{}".format(e))
+    with open("var/laps.log", "a") as myfile:
+        myfile.write("\r--------------------------\rStart: {} from {} {} with {} workers\r\n".format(time_0.strftime('%Y-%m-%d %H:%M:%S'),street,streetnum,numusers))
+        myfile.write("{}\t {}\t\t\t {}:{}\t {}(%) \t{} \t\t{} \t\t{} \t{} \t{} \t{}\r".format("Lap","Time","mm","ss","Success","poke","gyms","success","fail","skip","no items"))
+    
     # DB Updates
     db_updates_queue = Queue()
 
@@ -239,7 +301,8 @@ def main():
     if not args.only_server:
 
         # Check all proxies before continue so we know they are good
-        if args.proxy:
+
+        if args.proxy and not args.proxy_skip_check:
 
             # Overwrite old args.proxy with new working list
             args.proxy = check_proxies(args)

@@ -57,6 +57,7 @@ class BaseScheduler(object):
         self.status = status
         self.args = args
         self.scan_location = False
+        self.size = None
 
     # schedule function fills the queues with data
     def schedule(self):
@@ -73,6 +74,9 @@ class BaseScheduler(object):
     # Note: This function is called repeatedly while scanning is paused!
     def scanning_paused(self):
         self.empty_queues()
+ 
+    def getsize(self):
+        return self.size
 
     # Function to empty all queues in the queues list
     def empty_queues(self):
@@ -83,8 +87,7 @@ class BaseScheduler(object):
                         queue.get_nowait()
                 except Empty:
                     pass
-
-
+    
 # Hex Search is the classic search method, with the pokepath modification, searching in a hex grid around the center location
 class HexSearch(BaseScheduler):
 
@@ -196,7 +199,7 @@ class HexSearch(BaseScheduler):
         for step, location in enumerate(results, 1):
             locationsZeroed.append((step, (location[0], location[1], 0), 0, 0))
         return locationsZeroed
-
+    
     # Schedule the work to be done
     def schedule(self):
         if not self.scan_location:
@@ -211,6 +214,7 @@ class HexSearch(BaseScheduler):
             # FUTURE IMPROVEMENT - For now, queues is assumed to have a single queue.
             self.queues[0].put(location)
             log.debug("Added location {}".format(location))
+        self.size = len(self.locations)
 
 
 # Spawn Only Hex Search works like Hex Search, but skips locations that have no known spawnpoints
@@ -233,6 +237,7 @@ class HexSearchSpawnpoint(HexSearch):
         # Remove items with no spawnpoints in range
         locations = [coords for coords in locations if self._any_spawnpoints_in_range(coords[1], spawnpoints)]
 
+        self.size = len(self.locations)
         return locations
 
 
@@ -253,6 +258,9 @@ class SpawnScan(BaseScheduler):
         self.step_limit = args.step_limit
         self.locations = False
 
+    def getlocation_len(self):
+        print self.locations
+    
     # Generate locations is called when the locations list is cleared - the first time it scans or after a location change.
     def _generate_locations(self):
         # Attempt to load spawns from file
@@ -347,6 +355,7 @@ class SpawnScan(BaseScheduler):
             log.debug("Added location {}".format(location))
 
         # Clear the locations list so it gets regenerated next cycle
+        self.size = len(self.locations)
         self.locations = None
 
 
