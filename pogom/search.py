@@ -1,5 +1,6 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
+from __future__ import division
 
 '''
 Search Architecture:
@@ -24,10 +25,16 @@ import random
 import time
 import geopy
 import geopy.distance
+import sys
+from datetime import datetime, timedelta
+from requests import ConnectionError
+from requests.exceptions import ChunkedEncodingError
+from peewee import OperationalError
 
 from datetime import datetime
 from threading import Thread
 from queue import Queue, Empty
+import threading
 
 from pgoapi import PGoApi
 from pgoapi.utilities import f2i
@@ -45,6 +52,14 @@ log = logging.getLogger(__name__)
 
 TIMESTAMP = '\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000'
 
+total_points = 0
+total_pokemons = 0
+total_gyms = 0
+_loop = 0
+time_0 = datetime.now()
+loop_notified = True
+globalstatus = {'success' : 0, 'fail' : 0, 'skip' : 0, 'noitems' : 0}
+roundLock = threading.Lock()
 
 # Apply a location jitter
 def jitterLocation(location=None, maxMeters=10):
@@ -366,6 +381,15 @@ def search_overseer_thread(args, new_location_queue, pause_bit, encryption_lib_p
             log.debug('Search queue empty, scheduling more items to scan')
             scheduler.schedule()
         else:
+            remaining = search_items_queue.qsize()
+            
+            global total_points
+            total_points = scheduler.getsize()
+            if total_points > 0:
+                current_point = total_points - remaining
+                #print "Progress is {}/{} points".format(current_point,total_points)
+                printResults(current_point)
+            
             nextitem = search_items_queue.queue[0]
             threadStatus['Overseer']['message'] = 'Processing search queue, next item is {:6f},{:6f}'.format(nextitem[1][0], nextitem[1][1])
             # If times are specified, print the time of the next queue item, and how many seconds ahead/behind realtime
@@ -383,7 +407,10 @@ def search_overseer_thread(args, new_location_queue, pause_bit, encryption_lib_p
 def search_worker_thread(args, account_queue, account_failures, search_items_queue, pause_bit, encryption_lib_path, status, dbq, whq):
 
     log.debug('Search worker thread starting')
-
+    global globalstatus
+    global total_pokemons
+    global total_gyms
+    
     # The outer forever loop restarts only when the inner one is intentionally exited - which should only be done when the worker is failing too often, and probably banned.
     # This reinitializes the API and grabs a new account from the queue.
     while True:
@@ -392,11 +419,11 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
 
             # Get account
             status['message'] = 'Waiting to get new account from the queue'
-            log.info(status['message'])
+            log.debug(status['message'])
             account = account_queue.get()
             status['message'] = 'Switching to account {}'.format(account['username'])
             status['user'] = account['username']
-            log.info(status['message'])
+            log.debug(status['message'])
 
             stagger_thread(args, account)
 
@@ -437,7 +464,7 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                 if (args.account_search_interval is not None):
                     if (status['starttime'] <= (now() - args.account_search_interval)):
                         status['message'] = 'Account {} is being rotated out to rest.'.format(account['username'])
-                        log.info(status['message'])
+                        log.debug(status['message'])
                         account_failures.append({'account': account, 'last_fail_time': now(), 'reason': 'rest interval'})
                         break
 
@@ -460,7 +487,7 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                         remain = appears - now() + 10
                         status['message'] = 'Early for {:6f},{:6f}; waiting {}s...'.format(step_location[0], step_location[1], remain)
                         if first_loop:
-                            log.info(status['message'])
+                            log.debug(status['message'])
                             first_loop = False
                         time.sleep(1)
                     if paused:
@@ -473,19 +500,24 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                     status['skip'] += 1
                     # it is slightly silly to put this in status['message'] since it'll be overwritten very shortly after. Oh well.
                     status['message'] = 'Too late for location {:6f},{:6f}; skipping'.format(step_location[0], step_location[1])
-                    log.info(status['message'])
+                    log.debug(status['message'])
                     # No sleep here; we've not done anything worth sleeping for. Plus we clearly need to catch up!
                     continue
 
                 status['message'] = 'Searching at {:6f},{:6f}'.format(step_location[0], step_location[1])
-                log.info(status['message'])
-
+                log.debug(status['message'])
+                
                 # Let the api know where we intend to be for this loop
                 api.set_position(*step_location)
 
                 # Ok, let's get started -- check our login status
-                check_login(args, account, api, step_location, status['proxy_url'])
-
+                try:
+                    check_login(args, account, api, step_location, status['proxy_url'])
+                except ConnectionError as e:
+                    log.warn("Connection error: trying again soon")
+                    time.sleep(30)
+                    continue
+                    
                 # Make the actual request (finally!)
                 response_dict = map_request(api, step_location, args.jitter)
 
@@ -494,7 +526,7 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                     status['fail'] += 1
                     consecutive_fails += 1
                     status['message'] = 'Invalid response at {:6f},{:6f}, abandoning location'.format(step_location[0], step_location[1])
-                    log.error(status['message'])
+                    log.warn(status['message'])
                     time.sleep(args.scan_delay)
                     continue
 
@@ -506,6 +538,9 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                     consecutive_fails = 0
                     status['message'] = 'Search at {:6f},{:6f} completed with {} finds'.format(step_location[0], step_location[1], parsed['count'])
                     log.debug(status['message'])
+                    if 'count2' in parsed and parsed['count2']:
+                        total_pokemons += parsed['count2'][0] 
+                        
                 except KeyError:
                     parsed = False
                     status['fail'] += 1
@@ -527,7 +562,11 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                             except GymDetails.DoesNotExist as e:
                                 gyms_to_update[gym['gym_id']] = gym
                                 continue
-
+                            except OperationalError as e:
+                                log.warning("OperationalError: {}, skipping recording gym with team {}".format(e,gym['team_id']))
+                                time.sleep(random.random() + 3)
+                                #gyms_to_update[gym['gym_id']] = gym
+                                continue
                             # if we have a record of this gym already, check if the gym has been updated since our last update
                             if record.last_scanned < gym['last_modified']:
                                 gyms_to_update[gym['gym_id']] = gym
@@ -550,18 +589,31 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                             response = gym_request(api, step_location, gym)
 
                             # make sure the gym was in range. (sometimes the API gets cranky about gyms that are ALMOST 1km away)
-                            if response['responses']['GET_GYM_DETAILS']['result'] == 2:
-                                log.warning('Gym @ %f/%f is out of range (%dkm), skipping', gym['latitude'], gym['longitude'], distance)
-                            else:
-                                gym_responses[gym['gym_id']] = response['responses']['GET_GYM_DETAILS']
-
-                            # increment which gym we're on (for status messages)
-                            current_gym += 1
+                            try:
+                                if response['responses']['GET_GYM_DETAILS']['result'] == 2:
+                                    log.warning('Gym @ %f/%f is out of range (%dkm), skipping', gym['latitude'], gym['longitude'], distance)
+                                else:
+                                    gym_responses[gym['gym_id']] = response['responses']['GET_GYM_DETAILS']
+                                # increment which gym we're on (for status messages)
+                                
+                                current_gym += 1
+                                total_gyms += 1
+                                
+                            except TypeError:
+                                log.warning("Could not parse gym of team {} with user {}".format(gym['team_id'],account['username']))
+                                continue
 
                         status['message'] = 'Processing details of {} gyms for location {},{}...'.format(len(gyms_to_update), step_location[0], step_location[1])
                         log.debug(status['message'])
 
                         if gym_responses:
+                            try:
+                                parse_gyms(args, gym_responses, whq)
+                            except OperationalError as e:
+                                log.warning("OperationalError: {}, skipping parsing gym with team {}".format(e,gym['team_id']))
+                                time.sleep(random.random() + 3)
+                                continue
+
                             parse_gyms(args, gym_responses, whq)
 
                 # Record the time and place the worker left off at
@@ -571,7 +623,11 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                 # Always delay the desired amount after "scan" completion
                 status['message'] += ', sleeping {}s until {}'.format(args.scan_delay, time.strftime('%H:%M:%S', time.localtime(time.time() + args.scan_delay)))
                 time.sleep(args.scan_delay)
-
+                if status['fail'] and status['fail'] > 0:           globalstatus['fail'] += 1 
+                if status['success'] and status['success'] > 0:     globalstatus['success'] += 1 
+                if status['noitems'] and status['noitems'] > 0:     globalstatus['noitems'] += 1
+                if status['skip'] and status['skip'] > 0:           globalstatus['skip'] += 1 
+        
         # catch any process exceptions, log them, and continue the thread
 
         except Exception as e:
@@ -603,9 +659,12 @@ def check_login(args, account, api, position, proxy_url):
         except AuthException:
             if i >= args.login_retries:
                 raise TooManyLoginAttempts('Exceeded login attempts')
+        except ChunkedEncodingError as e:
+            if i >= args.login_retries:
+                raise TooManyLoginAttempts('Exceeded login attempts: {}'.format(e))
             else:
                 i += 1
-                log.error('Failed to login to Pokemon Go with account %s. Trying again in %g seconds', account['username'], args.login_delay)
+                log.warning('Failed to login to Pokemon Go with account %s. Trying again in %g seconds', account['username'], args.login_delay)
                 time.sleep(args.login_delay)
 
     log.debug('Login for account %s successful', account['username'])
@@ -675,6 +734,78 @@ def stagger_thread(args, account):
     log.debug('Delaying thread startup for %.2f seconds', delay)
     time.sleep(delay)
 
+def printResults(step):
+    global total_gyms
+    global total_pokemons
+    global time_0
+    global _loop
+    global loop_notified
+    global globalstatus
+    
+    with roundLock:
+        if step > 100: 
+            loop_notified = False
+        
+        if step <= 100 and (not loop_notified):
+            time_1 = datetime.now()
+            deltaTime = time_1 - time_0
+            dseconds = deltaTime.seconds
+            dhour = int(dseconds/3600)
+            dmin = int((dseconds-dhour*3600)/60)
+            dsec = int(dseconds-dmin*60)
+            if dmin > 5:
+                _loop += 1
+                laptime = str(time_1.strftime("%H:%M:%S"))
+                minStr = str(dmin)
+                secStr = str(dsec) if dsec >= 10 else "0" + str(dsec)
+                
+                print ""
+                print "*************************"
+                print "Completed round {} in {}m {}s. Found {} pokemon and {} gyms.".format(_loop,minStr,secStr,total_pokemons,total_gyms)
+                try:
+                    srate = round(100*(globalstatus['success']/(globalstatus['success']+globalstatus['fail']+globalstatus['skip']+globalstatus['noitems'])))
+                    
+                    print "Success rate: {} %".format(srate)
+                    with open("var/laps.log", "a") as myfile:
+                        myfile.write("{}\t {}\t\t {}:{}\t {}\t\t\t{}\t\t {}\t\t{}\t\t{}\t\t{}\t\t\t {}\r".format(
+                                    _loop,
+                                    laptime,
+                                    minStr,
+                                    secStr,
+                                    srate,
+                                    total_pokemons,
+                                    total_gyms,
+                                    globalstatus['success'],
+                                    globalstatus['fail'],
+                                    globalstatus['skip'],
+                                    globalstatus['noitems']))
+                except ZeroDivisionError:
+                    return
+                
+                time_0 = datetime.now()
+                total_gyms = 0
+                total_pokemons = 0
+                globalstatus = {'success' : 0, 'fail' : 0, 'skip' : 0, 'noitems' : 0}
+                loop_notified = True
+                print "********************"
+                print ""
+        percent = step/ total_points
+        bar_length = 32
+        hashes = '#' * int(round(percent * bar_length))
+        spaces = ' ' * (bar_length - len(hashes))
+        sys.stdout.write("\rRound {2}:       [{0}]  {1}%\t    Step {3} of {4}. Pok:{5}, Gym:{6} (Su:{7}, Fa:{8}, Sk:{9}, No:{10})   \r".format(   hashes + spaces, 
+                                                int(round(percent * 100)),
+                                                _loop+1,
+                                                step,
+                                                total_points,
+                                                total_pokemons,
+                                                total_gyms,
+                                                globalstatus['success'],
+                                                globalstatus['fail'],
+                                                globalstatus['skip'],
+                                                globalstatus['noitems']))
+        sys.stdout.flush()
+    
 
 class TooManyLoginAttempts(Exception):
     pass

@@ -23,6 +23,7 @@ from . import config
 from .utils import get_pokemon_name, get_pokemon_rarity, get_pokemon_types, get_args
 from .transform import transform_from_wgs_to_gcj, get_new_coords
 from .customLog import printPokemon
+from bot import sendPokefication
 
 log = logging.getLogger(__name__)
 
@@ -31,7 +32,7 @@ flaskDb = FlaskDB()
 cache = TTLCache(maxsize=100, ttl=60 * 5)
 
 db_schema_version = 8
-
+warnQueSize = 150
 
 class MyRetryDB(RetryOperationalError, PooledMySQLDatabase):
     pass
@@ -628,9 +629,19 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, a
     pokemons = {}
     pokestops = {}
     gyms = {}
-    skipped = 0
-
-    cells = map_dict['responses']['GET_MAP_OBJECTS']['map_cells']
+    
+    try:
+        cells = map_dict['responses']['GET_MAP_OBJECTS']['map_cells']
+    except KeyError as e:
+        # debug because the error is caught in search.py anyway
+        log.debug("Could not parse map: invalid map")
+        return {'count':0, 'gyms' :{}}
+        
+    except TypeError as e:
+        # debug because the error is caught in search.py anyway
+        log.debug("Could not parse map: invalid map")
+        return {'count':0, 'gyms' :{}}
+    
     for cell in cells:
         if config['parse_pokemon']:
             for p in cell.get('wild_pokemons', []):
@@ -779,6 +790,7 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, a
     return {
         'count': len(pokemons) + skipped + len(pokestops) + len(gyms),
         'gyms': gyms,
+        'count2': [len(pokemons),len(pokestops),len(gyms)]
     }
 
 
@@ -921,9 +933,9 @@ def db_updater(args, q):
                 log.debug('Upserted to %s, %d records (upsert queue remaining: %d)',
                           model.__name__,
                           len(data),
-                          q.qsize())
-                if q.qsize() > 50:
-                    log.warning("DB queue is > 50 (@%d); try increasing --db-threads", q.qsize())
+                          q.qsize())        
+                if q.qsize() > warnQueSize:
+                    log.warning("DB queue is > {} ({}); try increasing --db-threads".format(warnQueSize,q.qsize()))
 
         except Exception as e:
             log.exception('Exception in db_updater: %s', e)
