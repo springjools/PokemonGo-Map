@@ -34,6 +34,17 @@ cache = TTLCache(maxsize=100, ttl=60 * 5)
 db_schema_version = 8
 warnQueSize = 150
 
+EErrors = {
+    0: 'ENCOUNTER_ERROR',
+    1: 'ENCOUNTER_SUCCESS',
+    2: 'ENCOUNTER_NOT_FOUND',
+    3: 'ENCOUNTER_CLOSED',
+    4: 'ENCOUNTER_POKEMON_FLED',
+    5: 'ENCOUNTER_NOT_IN_RANGE',
+    6: 'ENCOUNTER_ALREADY_HAPPENED',
+    7: 'POKEMON_INVENTORY_FULL'
+}
+
 class MyRetryDB(RetryOperationalError, PooledMySQLDatabase):
     pass
 
@@ -603,25 +614,29 @@ def construct_pokemon_dict(pokemons, p, encounter_result, d_t):
     }
     if encounter_result is not None:
         ecounter_info = encounter_result['responses']['ENCOUNTER']
-        pokemon_info = ecounter_info['wild_pokemon']['pokemon_data']
-        attack = pokemon_info.get('individual_attack', 0)
-        defense = pokemon_info.get('individual_defense', 0)
-        stamina = pokemon_info.get('individual_stamina', 0)
-        pokemons[p['encounter_id']].update({
-            'individual_attack': attack,
-            'individual_defense': defense,
-            'individual_stamina': stamina,
-            'move_1': pokemon_info['move_1'],
-            'move_2': pokemon_info['move_2'],
-        })
+        if 'wild_pokemon' in ecounter_info:
+            pokemon_info = ecounter_info['wild_pokemon']['pokemon_data']
+            attack = pokemon_info.get('individual_attack', 0)
+            defense = pokemon_info.get('individual_defense', 0)
+            stamina = pokemon_info.get('individual_stamina', 0)
+            pokemons[p['encounter_id']].update({
+                'individual_attack': attack,
+                'individual_defense': defense,
+                'individual_stamina': stamina,
+                'move_1': pokemon_info['move_1'],
+                'move_2': pokemon_info['move_2'],
+            })
+        else:
+            log.warning("Pokemon {}: encounter error {}: {}".format(p['pokemon_data']['pokemon_id'],ecounter_info['status'],EErrors[int(ecounter_info['status'])]))
     else:
-        pokemons[p['encounter_id']].update({
-            'individual_attack': None,
-            'individual_defense': None,
-            'individual_stamina': None,
-            'move_1': None,
-            'move_2': None,
-        })
+        pass
+        # pokemons[p['encounter_id']].update({
+            # 'individual_attack': None,
+            # 'individual_defense': None,
+            # 'individual_stamina': None,
+            # 'move_1': None,
+            # 'move_2': None,
+        # })
 
 
 # todo: this probably shouldn't _really_ be in "models" anymore, but w/e
@@ -664,7 +679,7 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, a
 
                 printPokemon(p['pokemon_data']['pokemon_id'], p['latitude'],
                              p['longitude'], d_t)
-
+                
                 # Scan for IVs and moves
                 encounter_result = None
                 if (args.encounter and (p['pokemon_data']['pokemon_id'] in args.encounter_whitelist or
@@ -675,7 +690,7 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, a
                                                      player_latitude=step_location[0],
                                                      player_longitude=step_location[1])
                 construct_pokemon_dict(pokemons, p, encounter_result, d_t)
-
+                
                 if args.webhooks:
                     wh_update_queue.put(('pokemon', {
                         'encounter_id': b64encode(str(p['encounter_id'])),
@@ -693,6 +708,16 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, a
                         'move_2': pokemons[p['encounter_id']]['move_2']
                     }))
 
+                # Send to bot
+                sendPokefication(       p['pokemon_data']['pokemon_id'],
+                                        p['latitude'],
+                                        p['longitude'],
+                                        d_t,
+                                        b64encode(str(p['encounter_id'])),
+                                        pokemons[p['encounter_id']]['individual_attack'] if 'individual_attack' in pokemons[p['encounter_id']] else None,
+                                        pokemons[p['encounter_id']]['individual_defense'] if 'individual_defense' in pokemons[p['encounter_id']] else None,
+                                        pokemons[p['encounter_id']]['individual_stamina'] if 'individual_stamina' in pokemons[p['encounter_id']] else None)
+                
         for f in cell.get('forts', []):
             if config['parse_pokestops'] and f.get('type') == 1:  # Pokestops
                 if 'active_fort_modifier' in f:
@@ -776,7 +801,7 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, a
         db_update_queue.put((Pokestop, pokestops))
     if len(gyms):
         db_update_queue.put((Gym, gyms))
-
+    
     log.info('Parsing found %d pokemons, %d pokestops, and %d gyms',
              len(pokemons) + skipped,
              len(pokestops),

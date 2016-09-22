@@ -228,7 +228,7 @@ def getDist(lat0,lon0,lat1,lon1):
     d = R * c
     return int(round(d,0))
 
-def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id):
+def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id,iva,ivd,ivs):
     global time_db_check
     global pokeDB
         from_zone = tz.tzutc()
@@ -253,9 +253,11 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id):
     strMin      = str(deltaMin)
     strSec      = "0" + str(deltaSec) if deltaSec < 10 else str(deltaSec)
     pname = pokemonNames[pokemon_id-1]
+    iv          = None
+    if iva and ivd and ivs:
+        iv = round(100*(iva+ivd+ivs)/45,1)
     
-    
-    log.debug("Found a wild {}, TTH: {}m {}s".format(pname,strMin,strSec))
+    log.debug("Found a wild {} ({}%), TTH: {}m {}s".format(pname,iv,strMin,strSec))
     
     inpokeDB = None
     try:
@@ -376,20 +378,23 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id):
                         try:
                             location = user.get('location')
                             if location and len(location) > 0:
-                                if dist and (dist < max_dist or (importantList and len(importantList) > 0 and pname in importantList)):
-                                    bot.sendMessage(chat_id, text="A wild *{}* appeared {}m from you, it will disappear *{}* (in {}m {}s)".format(pname,dist,poketime,strMin,strSec),reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)
+                                if dist and (dist < max_dist or (iv and iv > 85) or (importantList and len(importantList) > 0 and pname in importantList)):
+                                    if iv:
+                                        bot.sendMessage(chat_id, text="A ({}%) *{}* appeared {}m from you, it will disappear *{}* (in {}m {}s)".format(iv,pname,dist,poketime,strMin,strSec),reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)
+                                    else:
+                                        bot.sendMessage(chat_id, text="A wild *{}* appeared {}m from you, it will disappear *{}* (in {}m {}s)".format(pname,dist,poketime,strMin,strSec),reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)
                                 if encounter_id in pokeDB and pokeDB[encounter_id][4]:
-                                    bot.sendVenue(chat_id,float(lat),float(lon),pname,"{0} ({1}m {2}s). {5}m away\r\r On {3} {4}".format(poketime,strMin,strSec,street,streetnum,dist),disable_notification=True,reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)
+                                    bot.sendVenue(chat_id,float(lat),float(lon),pname if not iv else pname + str(iv)+"%","{0} ({1}m {2}s). {5}m away\r\r On {3} {4}".format(poketime,strMin,strSec,street,streetnum,dist),disable_notification=True,reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)
                                 else:
-                                    bot.sendVenue(chat_id,float(lat),float(lon),pname,"{0} ({1}m {2}s), {3}m away\r\r()".format(poketime,strMin,strSec,dist),disable_notification=True,reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)
+                                    bot.sendVenue(chat_id,float(lat),float(lon),pname if not iv else pname + str(iv)+"%","{0} ({1}m {2}s), {3}m away\r\r()".format(poketime,strMin,strSec,dist),disable_notification=True,reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)
                             else:
-                                bot.sendVenue(chat_id,float(lat),float(lon),pname,"{} ({}m {}s)\r\r {} {}".format(poketime,strMin,strSec,street,streetnum,),disable_notification=True,reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)                        
+                                bot.sendVenue(chat_id,float(lat),float(lon),pname if not iv else pname + str(iv)+"%","{} ({}m {}s)\r\r {} {}".format(poketime,strMin,strSec,street,streetnum,),disable_notification=True,reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)                        
                             nList.append(uname)
                             
                             #global pokeDB
                             pokeDB[encounter_id][5] = nList
                             #log.info("Notified-list = {}, PDB = {}".format(nList,pokeDB))
-                            log.info("User {} has requested notification of {}: notification sent".format(uname,pname))
+                            log.debug("User {} has requested notification of {}: notification sent".format(uname,pname))
                         except Unauthorized as e:
                             log.warning("Unable to send notification to user {}: {}".format(uname,e))
                             result = users.delete_one({'chat_id': chat_id})
@@ -439,7 +444,7 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id):
             if time_now > time_poke:
                 with lock:
                     pokeDB.pop(key,None)
-                    log.info("Deleted pokemon {} with encounter-id={} from pokeDB".format(pokename,key))
+                    log.debug("Deleted pokemon {} with encounter-id={} from pokeDB".format(pokename,key))
                 
         c = None
     
