@@ -216,7 +216,7 @@ def account_recycler(accounts_queue, account_failures, args):
     while True:
         # Run once a minute
         time.sleep(60)
-        log.info('Account recycler running. Checking status of {} accounts'.format(len(account_failures)))
+        log.debug('Account recycler running. Checking status of {} accounts'.format(len(account_failures)))
 
         # Create a new copy of the failure list to search through, so we can iterate through it without it changing
         failed_temp = list(account_failures)
@@ -753,7 +753,7 @@ def printResults(step):
             deltaTime = time_1 - time_0
             dseconds = deltaTime.seconds
             dhour = int(dseconds/3600)
-            dmin = int((dseconds-dhour*3600)/60)
+            dmin = int((dseconds/60))
             dsec = int(dseconds-dmin*60)
             if dmin > 5:
                 _loop += 1
