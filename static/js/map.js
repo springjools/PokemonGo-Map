@@ -614,7 +614,7 @@ function setupGymMarker (item) {
       lng: item['longitude']
     },
     map: map,
-    icon: {url: 'static/forts/' + Store.get('gymMarkerStyle') + '/' + gymTypes[item['team_id']] + (item['team_id'] !== 0 ? '_' + getGymLevel(item['gym_points']) : '') + '.png', scaledSize: new google.maps.Size(48, 48)}
+    icon: {url: 'static/forts/' + Store.get('gymMarkerStyle') + '/' + gymTypes[item['team_id']] + (item['team_id'] !== 0 ? '_' + getGymLevel(item['gym_points']) : '') + '.png', scaledSize: new google.maps.Size(8, 8)}
   })
 
   if (!marker.rangeCircle && isRangeActive(map)) {
@@ -631,13 +631,13 @@ function setupGymMarker (item) {
 }
 
 function updateGymMarker (item, marker) {
-  marker.setIcon({url: 'static/forts/' + Store.get('gymMarkerStyle') + '/' + gymTypes[item['team_id']] + (item['team_id'] !== 0 ? '_' + getGymLevel(item['gym_points']) : '') + '.png', scaledSize: new google.maps.Size(48, 48)})
+  marker.setIcon({url: 'static/forts/' + Store.get('gymMarkerStyle') + '/' + gymTypes[item['team_id']] + (item['team_id'] !== 0 ? '_' + getGymLevel(item['gym_points']) : '') + '.png', scaledSize: new google.maps.Size(8, 8)})
   marker.infoWindow.setContent(gymLabel(gymTypes[item['team_id']], item['team_id'], item['gym_points'], item['latitude'], item['longitude'], item['last_scanned'], item['name'], item['pokemon']))
   return marker
 }
 function updateGymIcons () {
   $.each(mapData.gyms, function (key, value) {
-    mapData.gyms[key]['marker'].setIcon({url: 'static/forts/' + Store.get('gymMarkerStyle') + '/' + gymTypes[mapData.gyms[key]['team_id']] + (mapData.gyms[key]['team_id'] !== 0 ? '_' + getGymLevel(mapData.gyms[key]['gym_points']) : '') + '.png', scaledSize: new google.maps.Size(48, 48)})
+    mapData.gyms[key]['marker'].setIcon({url: 'static/forts/' + Store.get('gymMarkerStyle') + '/' + gymTypes[mapData.gyms[key]['team_id']] + (mapData.gyms[key]['team_id'] !== 0 ? '_' + getGymLevel(mapData.gyms[key]['gym_points']) : '') + '.png', scaledSize: new google.maps.Size(8, 8)})
   })
 }
 
