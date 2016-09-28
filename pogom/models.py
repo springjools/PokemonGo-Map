@@ -612,6 +612,7 @@ def construct_pokemon_dict(pokemons, p, encounter_result, d_t):
         'longitude': p['longitude'],
         'disappear_time': d_t,
     }
+
     if encounter_result is not None:
         ecounter_info = encounter_result['responses']['ENCOUNTER']
         if 'wild_pokemon' in ecounter_info:
@@ -638,13 +639,13 @@ def construct_pokemon_dict(pokemons, p, encounter_result, d_t):
             # 'move_2': None,
         # })
 
-
 # todo: this probably shouldn't _really_ be in "models" anymore, but w/e
 def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, api):
     pokemons = {}
     pokestops = {}
     gyms = {}
     skipped = 0
+<<<<<<< HEAD
     
     try:
         cells = map_dict['responses']['GET_MAP_OBJECTS']['map_cells']
@@ -658,12 +659,32 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, a
         log.debug("Could not parse map: invalid map")
         return {'count':0, 'gyms' :{}}
     
+=======
+    encountered_pokemon = []
+
+    cells = map_dict['responses']['GET_MAP_OBJECTS']['map_cells']
+>>>>>>> 9b3927efc7aee1d836f099572f5be96ac5cac323
     for cell in cells:
         if config['parse_pokemon']:
+            # pre-build a list of encountered pokemon
+            encounter_ids = [b64encode(str(p['encounter_id'])) for p in cell.get('wild_pokemons', [])]
+            if encounter_ids:
+                query = (Pokemon
+                         .select()
+                         .where((Pokemon.disappear_time > datetime.utcnow()) & (Pokemon.encounter_id << encounter_ids))
+                         .dicts()
+                         )
+                encountered_pokemon = [(p['encounter_id'], p['spawnpoint_id']) for p in query]
+
             for p in cell.get('wild_pokemons', []):
+<<<<<<< HEAD
 
                 # Don't parse pokemon we've already encountered. Avoids IVs getting nulled out on rescanning.
                 if Pokemon.get_encountered_pokemon(p['encounter_id']):
+=======
+                # Don't parse pokemon we've already encountered. Avoids IVs getting nulled out on rescanning.
+                if (b64encode(str(p['encounter_id'])), p['spawn_point_id']) in encountered_pokemon:
+>>>>>>> 9b3927efc7aee1d836f099572f5be96ac5cac323
                     skipped += 1
                     continue
 
@@ -679,7 +700,11 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, a
 
                 printPokemon(p['pokemon_data']['pokemon_id'], p['latitude'],
                              p['longitude'], d_t)
+<<<<<<< HEAD
                 
+=======
+
+>>>>>>> 9b3927efc7aee1d836f099572f5be96ac5cac323
                 # Scan for IVs and moves
                 encounter_result = None
                 if (args.encounter and (p['pokemon_data']['pokemon_id'] in args.encounter_whitelist or
@@ -690,7 +715,11 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, a
                                                      player_latitude=step_location[0],
                                                      player_longitude=step_location[1])
                 construct_pokemon_dict(pokemons, p, encounter_result, d_t)
+<<<<<<< HEAD
                 
+=======
+
+>>>>>>> 9b3927efc7aee1d836f099572f5be96ac5cac323
                 if args.webhooks:
                     wh_update_queue.put(('pokemon', {
                         'encounter_id': b64encode(str(p['encounter_id'])),
@@ -1001,6 +1030,7 @@ def clean_db_loop(args):
                          .delete()
                          .where((Pokemon.disappear_time <
                                 (datetime.utcnow() - timedelta(hours=args.purge_data)))))
+                query.execute()
 
             log.info('Regular database cleaning complete')
             time.sleep(60)
@@ -1011,7 +1041,13 @@ def clean_db_loop(args):
 def bulk_upsert(cls, data):
     num_rows = len(data.values())
     i = 0
-    step = 120
+
+    if args.db_type == 'mysql':
+        step = 120
+    else:
+        # SQLite has a default max number of parameters of 999,
+        # so we need to limit how many rows we insert for it.
+        step = 50
 
     while i < num_rows:
         log.debug('Inserting items %d to %d', i, min(i + step, num_rows))
