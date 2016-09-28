@@ -510,19 +510,10 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                     # No sleep here; we've not done anything worth sleeping for. Plus we clearly need to catch up!
                     continue
 
-<<<<<<< HEAD
                 status['message'] = 'Searching at {:6f},{:6f}'.format(step_location[0], step_location[1])
                 log.debug(status['message'])
                 
-=======
->>>>>>> 9b3927efc7aee1d836f099572f5be96ac5cac323
-                # Let the api know where we intend to be for this loop
-                # doing this before check_login so it does not also have to be done there
-                # when the auth token is refreshed
-                api.set_position(*step_location)
-
                 # Ok, let's get started -- check our login status
-<<<<<<< HEAD
                 try:
                     check_login(args, account, api, step_location, status['proxy_url'])
                 except ConnectionError as e:
@@ -530,14 +521,12 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                     time.sleep(30)
                     continue
                     
-=======
                 check_login(args, account, api, step_location, status['proxy_url'])
 
                 # putting this message after the check_login so the messages aren't out of order
                 status['message'] = 'Searching at {:6f},{:6f}'.format(step_location[0], step_location[1])
                 log.info(status['message'])
 
->>>>>>> 9b3927efc7aee1d836f099572f5be96ac5cac323
                 # Make the actual request (finally!)
                 response_dict = map_request(api, step_location, args.jitter)
 

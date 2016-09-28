@@ -645,7 +645,6 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, a
     pokestops = {}
     gyms = {}
     skipped = 0
-<<<<<<< HEAD
     
     try:
         cells = map_dict['responses']['GET_MAP_OBJECTS']['map_cells']
@@ -659,11 +658,11 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, a
         log.debug("Could not parse map: invalid map")
         return {'count':0, 'gyms' :{}}
     
-=======
+
     encountered_pokemon = []
 
     cells = map_dict['responses']['GET_MAP_OBJECTS']['map_cells']
->>>>>>> 9b3927efc7aee1d836f099572f5be96ac5cac323
+
     for cell in cells:
         if config['parse_pokemon']:
             # pre-build a list of encountered pokemon
@@ -677,14 +676,8 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, a
                 encountered_pokemon = [(p['encounter_id'], p['spawnpoint_id']) for p in query]
 
             for p in cell.get('wild_pokemons', []):
-<<<<<<< HEAD
-
-                # Don't parse pokemon we've already encountered. Avoids IVs getting nulled out on rescanning.
-                if Pokemon.get_encountered_pokemon(p['encounter_id']):
-=======
                 # Don't parse pokemon we've already encountered. Avoids IVs getting nulled out on rescanning.
                 if (b64encode(str(p['encounter_id'])), p['spawn_point_id']) in encountered_pokemon:
->>>>>>> 9b3927efc7aee1d836f099572f5be96ac5cac323
                     skipped += 1
                     continue
 
@@ -700,11 +693,7 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, a
 
                 printPokemon(p['pokemon_data']['pokemon_id'], p['latitude'],
                              p['longitude'], d_t)
-<<<<<<< HEAD
                 
-=======
-
->>>>>>> 9b3927efc7aee1d836f099572f5be96ac5cac323
                 # Scan for IVs and moves
                 encounter_result = None
                 if (args.encounter and (p['pokemon_data']['pokemon_id'] in args.encounter_whitelist or
@@ -715,11 +704,7 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, a
                                                      player_latitude=step_location[0],
                                                      player_longitude=step_location[1])
                 construct_pokemon_dict(pokemons, p, encounter_result, d_t)
-<<<<<<< HEAD
                 
-=======
-
->>>>>>> 9b3927efc7aee1d836f099572f5be96ac5cac323
                 if args.webhooks:
                     wh_update_queue.put(('pokemon', {
                         'encounter_id': b64encode(str(p['encounter_id'])),
