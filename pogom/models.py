@@ -658,11 +658,9 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, a
         log.debug("Could not parse map: invalid map")
         return {'count':0, 'gyms' :{}}
     
-
     encountered_pokemon = []
 
     cells = map_dict['responses']['GET_MAP_OBJECTS']['map_cells']
-
     for cell in cells:
         if config['parse_pokemon']:
             # pre-build a list of encountered pokemon
@@ -693,7 +691,7 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, a
 
                 printPokemon(p['pokemon_data']['pokemon_id'], p['latitude'],
                              p['longitude'], d_t)
-                
+
                 # Scan for IVs and moves
                 encounter_result = None
                 if (args.encounter and (p['pokemon_data']['pokemon_id'] in args.encounter_whitelist or
@@ -704,7 +702,7 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, a
                                                      player_latitude=step_location[0],
                                                      player_longitude=step_location[1])
                 construct_pokemon_dict(pokemons, p, encounter_result, d_t)
-                
+
                 if args.webhooks:
                     wh_update_queue.put(('pokemon', {
                         'encounter_id': b64encode(str(p['encounter_id'])),
@@ -815,7 +813,7 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, a
         db_update_queue.put((Pokestop, pokestops))
     if len(gyms):
         db_update_queue.put((Gym, gyms))
-    
+
     log.info('Parsing found %d pokemons, %d pokestops, and %d gyms',
              len(pokemons) + skipped,
              len(pokestops),
