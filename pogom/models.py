@@ -34,7 +34,7 @@ cache = TTLCache(maxsize=100, ttl=60 * 5)
 db_schema_version = 8
 warnQueSize = 150
 
-EErrors = {
+EncounterErrors = {
     0: 'ENCOUNTER_ERROR',
     1: 'ENCOUNTER_SUCCESS',
     2: 'ENCOUNTER_NOT_FOUND',
@@ -628,7 +628,7 @@ def construct_pokemon_dict(pokemons, p, encounter_result, d_t):
                 'move_2': pokemon_info['move_2'],
             })
         else:
-            log.warning("Pokemon {}: encounter error {}: {}".format(p['pokemon_data']['pokemon_id'],ecounter_info['status'],EErrors[int(ecounter_info['status'])]))
+            log.warning("Pokemon {}: encounter error {}: {}".format(p['pokemon_data']['pokemon_id'],ecounter_info['status'],EncounterErrors[int(ecounter_info['status'])]))
     else:
         pass
         # pokemons[p['encounter_id']].update({
