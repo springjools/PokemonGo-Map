@@ -131,12 +131,6 @@ def main():
         print "Exit: not connected to VPN protection"
         sys.exit(1)
     
-
-    # Check for depreciated argumented
-    if args.debug:
-        log.warning('--debug is depreciated. Please use --verbose instead.  Enabling --verbose')
-        args.verbose = 'nofile'
-
     # Add file logging if enabled
     if args.verbose and args.verbose != 'nofile':
         filelog = logging.FileHandler(args.verbose)
@@ -306,7 +300,6 @@ def main():
     if not args.only_server:
 
         # Check all proxies before continue so we know they are good
-
         if args.proxy and not args.proxy_skip_check:
 
             # Overwrite old args.proxy with new working list
