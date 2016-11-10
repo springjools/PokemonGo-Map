@@ -866,6 +866,17 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, a
                     'move_1': pokemons[p['encounter_id']]['move_1'],
                     'move_2': pokemons[p['encounter_id']]['move_2']
                 }))
+			# Send to bot
+            sendPokefication(       
+				p['pokemon_data']['pokemon_id'],
+				p['latitude'],
+				p['longitude'],
+				d_t,
+				b64encode(str(p['encounter_id'])),
+				pokemons[p['encounter_id']]['individual_attack'] if 'individual_attack' in pokemons[p['encounter_id']] else None,
+				pokemons[p['encounter_id']]['individual_defense'] if 'individual_defense' in pokemons[p['encounter_id']] else None,
+				pokemons[p['encounter_id']]['individual_stamina'] if 'individual_stamina' in pokemons[p['encounter_id']] else None
+			)
 
     if fortsfound:
         if config['parse_pokestops']:
