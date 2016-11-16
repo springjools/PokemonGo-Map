@@ -278,6 +278,8 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id,iva,ivd,ivs):
                 
                 name = user.get('name')
                 
+                if not name == "pflink": continue
+                
                 chat_id = user.get('chat_id')
                 pokemonList = user.get('notify_list')
                 paused = user.get('pause_notifications')
@@ -378,6 +380,7 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id,iva,ivd,ivs):
                         try:
                             location = user.get('location')
                             if location and len(location) > 0:
+                                # filters
                                 if dist and (dist < max_dist or (iv and iv > 85) or (importantList and len(importantList) > 0 and pname in importantList)):
                                     if iv:
                                         bot.sendMessage(chat_id, text="A ({}%) *{}* appeared {}m from you, it will disappear *{}* (in {}m {}s)".format(iv,pname,dist,poketime,strMin,strSec),reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)
