@@ -27,8 +27,8 @@ from pymongo.errors import NetworkTimeout, ConnectionFailure, ExecutionTimeout, 
 
 from pygeocoder import Geocoder
 from pygeolib import GeocoderError
-import coloredlogs
 import sys
+
 reload(sys)  # Reload does the trick!
 sys.setdefaultencoding('UTF8')
 
@@ -50,12 +50,20 @@ gc_counts = db.gc_counts
 bot = telegram.bot.Bot(TOKEN)
 log = logging.getLogger(__name__)
 time_db_check = datetime.utcnow()
-_maxGC = 400
-_max_ping_distance=1500
-_max_message_distance=5000
-seen_before = None
-locks = dict()
-   
+_maxGC                  = 400
+_max_ping_distance      = 1500
+_max_message_distance   = 5000
+_DEFAULTIVMIN           = "66"
+_DEFAULTFILTERTYPE      = "2" 
+seen_before             = None
+locks                   = dict()
+
+validFilters = {
+    "0": "off",
+    "1": "full",
+    "2": "silent"
+}
+
 pokemonDict = {
     1: "Bulbasaur",
     2: "Ivysaur",
@@ -254,7 +262,7 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id,iva,ivd,ivs):
     strSec      = "0" + str(deltaSec) if deltaSec < 10 else str(deltaSec)
     pname = pokemonNames[pokemon_id-1]
     iv          = None
-    if iva and ivd and ivs:
+    if iva is not None and ivd is not None and ivs is not None:
         iv = round(100*(iva+ivd+ivs)/45,1)
     
     log.debug("Found a wild {} ({}%), TTH: {}m {}s".format(pname,iv,strMin,strSec))
@@ -278,24 +286,38 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id,iva,ivd,ivs):
                 
                 name = user.get('name')
                 
-                if not name == "pflink": continue
+                #for debugging
+                #if not name == "pflink": continue
+                
+                dist = None
                 
                 chat_id = user.get('chat_id')
-                pokemonList = user.get('notify_list')
+                pokemonList = user.get('notify_list') or []
                 paused = user.get('pause_notifications')
                 uname = name if len(name) > 0 else chat_id
                 location = user.get('location')
                 
-                importantList = user.get('important_list')
-                ignore_setting_item = list(users.find({'chat_id' : chat_id},{'ignore_setting': 1, '_id': 0}))[0]
-                ignore_setting = ignore_setting_item.get('ignore_setting') if ignore_setting_item else False
+                importantList = user.get('important_list') or []
                 
-                if not pname in pokemonList: continue
+                filter_type_item = list(users.find({'chat_id' : chat_id},{'filter_type': 1, '_id': 0}))[0]
+                min_iv_item = list(users.find({'chat_id' : chat_id},{'min_iv': 1, '_id': 0}))[0]
+                
+                filter_type = filter_type_item.get('filter_type') if filter_type_item else _DEFAULTFILTERTYPE
+                min_iv = int(min_iv_item.get('min_iv')) if min_iv_item else _DEFAULTIVMIN
+                
+                filtered = iv and min_iv and iv < min_iv and importantList and len(importantList) > 0 and (pname not in importantList)
+                
+                # continue if user does not care about this pokemon
+                if (pname not in pokemonList) and (pname not in importantList): 
+                    log.debug("Pokemon {} not in list: basic {}, important {}".format(pname,pname in pokemonList, pname not in importantList ))
+                    continue
+                
+                # continue if user has full filter and iv is too low, except for important pokemons
+                if filtered and filter_type and filter_type == "1": continue
+                if paused: continue
                 
                 if chat_id not in locks: locks[chat_id] = threading.Lock()
                 lock = locks[chat_id]
-                
-                if paused: continue
                 
                 if location and len(location) > 0:
                     max_dist = user.get('max_distance')
@@ -306,10 +328,15 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id,iva,ivd,ivs):
                     
                     dist = getDist(float(lat),float(lon),float(user_lat),float(user_lon))
                     
-                    
+                    # max _message_distance is global max range
                     if dist > _max_message_distance: continue
                     
-                    if importantList and len(importantList) > 0 and (pname not in importantList) and ignore_setting and dist > max_dist : continue
+                    # max_dist is individual max distance
+                    if importantList and len(importantList) > 0 and (pname not in importantList) and dist > max_dist: 
+                        if filter_type and filter_type == "1": continue
+                        else:
+                            filtered = True                     
+                            
                 street      = "Street"
                 streetnum   = "no"
                 
@@ -370,6 +397,7 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id,iva,ivd,ivs):
                 reply_markup            = telegram.ReplyKeyboardMarkup(custom_keyboard,one_time_keyboard=True,resize_keyboard=True)
                 
                 log.debug("Current PokeDB - user {}: {}".format(uname,pokeDB))
+                print "IV-final: {}, Min-IV: {}, filtered: {}".format(iv,min_iv,filtered)
                 
                 with lock:
                     nList = pokeDB[encounter_id][5]
@@ -378,19 +406,30 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id,iva,ivd,ivs):
                     if not uname in nList:
                         log.debug("Pokemon {}: user {} is not in notifylist, list = {}".format(pokemon_id,uname,nList))
                         try:
-                            location = user.get('location')
-                            if location and len(location) > 0:
-                                # filters
-                                if dist and (dist < max_dist or (iv and iv > 85) or (importantList and len(importantList) > 0 and pname in importantList)):
-                                    if iv:
-                                        bot.sendMessage(chat_id, text="A ({}%) *{}* appeared {}m from you, it will disappear *{}* (in {}m {}s)".format(iv,pname,dist,poketime,strMin,strSec),reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)
+                            # filter_type: 0 = off, 1 = full, 2 = silence
+                            if filter_type and filter_type in validFilters:
+                                if filtered and filter_type == "1": continue
+                                
+                                # send message with ping
+                                if not filtered or filter_type == "0":
+                                    location = user.get('location')
+                                    if dist:
+                                        #format message depending on if iv is known
+                                        if iv:
+                                            bot.sendMessage(chat_id, text="A ({}%) *{}* appeared {}m from you, it will disappear *{}* (in {}m {}s)".format(iv,pname,dist,poketime,strMin,strSec),reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)
+                                        else:
+                                            log.warning("No IV for {}, dist = {}, filtered = {}".format(pname,dist,filtered))
+                                            if pname in importantList:
+                                                bot.sendMessage(chat_id, text="A wild *{}* appeared {}m from you, it will disappear *{}* (in {}m {}s)".format(pname,dist,poketime,strMin,strSec),reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)
+                                
+                                # send silent location message
+                                if not filtered or filter_type == "2":
+                                    if encounter_id in pokeDB and pokeDB[encounter_id][4]:
+                                        bot.sendVenue(chat_id,float(lat),float(lon),pname if not iv else pname + str(iv)+"%","{0} ({1}m {2}s). {5}m away\r\r On {3} {4}".format(poketime,strMin,strSec,street,streetnum,dist),disable_notification=True,reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)
                                     else:
-                                        bot.sendMessage(chat_id, text="A wild *{}* appeared {}m from you, it will disappear *{}* (in {}m {}s)".format(pname,dist,poketime,strMin,strSec),reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)
-                                if encounter_id in pokeDB and pokeDB[encounter_id][4]:
-                                    bot.sendVenue(chat_id,float(lat),float(lon),pname if not iv else pname + str(iv)+"%","{0} ({1}m {2}s). {5}m away\r\r On {3} {4}".format(poketime,strMin,strSec,street,streetnum,dist),disable_notification=True,reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)
-                                else:
-                                    bot.sendVenue(chat_id,float(lat),float(lon),pname if not iv else pname + str(iv)+"%","{0} ({1}m {2}s), {3}m away\r\r()".format(poketime,strMin,strSec,dist),disable_notification=True,reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)
+                                        bot.sendVenue(chat_id,float(lat),float(lon),pname if not iv else pname + str(iv)+"%","{0} ({1}m {2}s), {3}m away\r\r()".format(poketime,strMin,strSec,dist),disable_notification=True,reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)
                             else:
+                                # send generic message
                                 bot.sendVenue(chat_id,float(lat),float(lon),pname if not iv else pname + str(iv)+"%","{} ({}m {}s)\r\r {} {}".format(poketime,strMin,strSec,street,streetnum,),disable_notification=True,reply_markup=reply_markup,parse_mode=telegram.ParseMode.MARKDOWN)                        
                             nList.append(uname)
                             

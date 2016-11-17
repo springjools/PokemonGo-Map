@@ -50,7 +50,6 @@ console.setFormatter(formatter)
 # add the handler to the root logger
 if len(logging.getLogger('').handlers) <= 1:
     logging.getLogger('').addHandler(console)
-#coloredlogs.install(level='INFO')
 
 # Moved here so logger is configured at load time
 logging.basicConfig(format='%(asctime)s [%(threadName)16s][%(module)14s][%(levelname)8s] %(message)s')
