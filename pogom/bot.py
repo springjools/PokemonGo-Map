@@ -53,7 +53,7 @@ time_db_check = datetime.utcnow()
 _maxGC                  = 400
 _max_ping_distance      = 1500
 _max_message_distance   = 5000
-_DEFAULTIVMIN           = "66"
+_DEFAULTIVMIN           = 66
 _DEFAULTFILTERTYPE      = "2" 
 seen_before             = None
 locks                   = dict()
@@ -62,6 +62,15 @@ validFilters = {
     "0": "off",
     "1": "full",
     "2": "silent"
+}
+
+blackList = {
+    10: "Caterpie",
+    16: "Pidgey",
+    19: "Rattata",
+    21: "Spearow",
+    41: "Zubat",
+    96: "Drowzee"   
 }
 
 pokemonDict = {
@@ -261,6 +270,7 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id,iva,ivd,ivs):
     strMin      = str(deltaMin)
     strSec      = "0" + str(deltaSec) if deltaSec < 10 else str(deltaSec)
     pname = pokemonNames[pokemon_id-1]
+    
     iv          = None
     if iva is not None and ivd is not None and ivs is not None:
         iv = round(100*(iva+ivd+ivs)/45,1)
@@ -305,11 +315,19 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id,iva,ivd,ivs):
                 filter_type = filter_type_item.get('filter_type') if filter_type_item else _DEFAULTFILTERTYPE
                 min_iv = int(min_iv_item.get('min_iv')) if min_iv_item else _DEFAULTIVMIN
                 
-                filtered = iv and min_iv and iv < min_iv and importantList and len(importantList) > 0 and (pname not in importantList)
+                filtered = iv and min_iv and iv < min_iv and importantList is not None and len(importantList) > 0 and (pname not in importantList)
+                
+                #print "Boolean check: 1-{}, 2-{},3-{}".format(iv and min_iv,iv < min_iv,importantList,
+                
+                #print "{}: iv = {}, filtered = {}, types: IV {} MIV{} IL{} FI{}".format(pname,iv,filtered,type(iv),type(min_iv),type(importantList),type(filtered))
                 
                 # continue if user does not care about this pokemon
                 if (pname not in pokemonList) and (pname not in importantList): 
                     log.debug("Pokemon {} not in list: basic {}, important {}".format(pname,pname in pokemonList, pname not in importantList ))
+                    continue
+                
+                if pname in blackList.values():
+                    log.debug("Skipping blacklisted pokemon {} for user {}".format(pname,uname))
                     continue
                 
                 # continue if user has full filter and iv is too low, except for important pokemons
@@ -397,7 +415,7 @@ def sendPokefication(pokemon_id,lat,lon,poketime_utc,encounter_id,iva,ivd,ivs):
                 reply_markup            = telegram.ReplyKeyboardMarkup(custom_keyboard,one_time_keyboard=True,resize_keyboard=True)
                 
                 log.debug("Current PokeDB - user {}: {}".format(uname,pokeDB))
-                print "IV-final: {}, Min-IV: {}, filtered: {}".format(iv,min_iv,filtered)
+                #print "Pokemon: {}, IV-final: {}, Min-IV: {}, filtered: {}".format(pname,iv,min_iv,filtered)
                 
                 with lock:
                     nList = pokeDB[encounter_id][5]
