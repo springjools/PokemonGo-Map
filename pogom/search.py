@@ -615,7 +615,7 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                                 else:
                                     status['message'] = 'Account {} is encountering a captcha, starting response sequence'.format(account['username'])
                                     log.warning(status['message'])
-                                    captcha_token = captcha_verifier(captcha_url,status)
+                                    captcha_token = captcha_verifier(captcha_url, status)
                                     status['message'] = 'Retrieved captcha token, attempting to verify challenge for {}'.format(account['username'])
                                     log.info(status['message'])
                                     if captcha_token == 'Fail':
