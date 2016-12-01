@@ -417,6 +417,15 @@ def search_overseer_thread(args, new_location_queue, pause_bit, heartb, db_updat
                 log.debug('Search queue empty, scheduling more items to scan')
                 scheduler_array[i].schedule()
             else:
+                
+                remaining = search_items_queue.qsize()
+                global total_points
+                total_points = scheduler.getsize()
+                if total_points > 0:
+                    current_point = total_points - remaining
+                    #print "Progress is {}/{} points".format(current_point,total_points)
+                    printResults(current_point)
+                
                 nextitem = search_items_queue_array[i].queue[0]
                 threadStatus['Overseer']['message'] = 'Processing search queue, next item is {:6f},{:6f}'.format(nextitem[1][0], nextitem[1][1])
                 # If times are specified, print the time of the next queue item, and how many seconds ahead/behind realtime.
@@ -508,11 +517,11 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
 
             # Get an account.
             status['message'] = 'Waiting to get new account from the queue'
-            log.info(status['message'])
+            log.debug(status['message'])
             account = account_queue.get()
             status['message'] = 'Switching to account {}'.format(account['username'])
             status['user'] = account['username']
-            log.info(status['message'])
+            log.debug(status['message'])
 
             stagger_thread(args, account)
 
