@@ -40,10 +40,6 @@ var searchMarker
 var storeZoom = true
 var scanPath
 var moves
-<<<<<<< HEAD
-
-=======
->>>>>>> 9b3927efc7aee1d836f099572f5be96ac5cac323
 
 var oSwLat
 var oSwLng
@@ -379,11 +375,7 @@ function pokemonLabel (name, rarity, types, disappearTime, id, latitude, longitu
         IV: ${iv.toFixed(1)}% (${atk}/${def}/${sta})
       </div>
       <div>
-<<<<<<< HEAD
-        Moves: ${moves[move1]} / ${moves[move2]}
-=======
         Moves: ${i8ln(moves[move1]['name'])} / ${i8ln(moves[move2]['name'])}
->>>>>>> 9b3927efc7aee1d836f099572f5be96ac5cac323
       </div>
       `
   }
