@@ -646,7 +646,7 @@ function customizePokemonMarker (marker, item, skipNotification) {
 }
 
 function setupGymMarker (item) {
-  var gymSize = getGymLevel(item['gym_points']) < 5 ? 32 : (getGymLevel(item['gym_points']) < 8 ? 40 : (getGymLevel(item['gym_points']) < 10 ? 48: 56))
+  var gymSize = getGymLevel(item['gym_points']) < 5 ? 32 : (getGymLevel(item['gym_points']) < 8 ? 40 : (getGymLevel(item['gym_points']) < 10 ? 48 : 56))
   var marker = new google.maps.Marker({
     position: {
       lat: item['latitude'],
@@ -670,7 +670,7 @@ function setupGymMarker (item) {
 }
 
 function updateGymMarker (item, marker) {
-  var gymSize = getGymLevel(item['gym_points']) < 5 ? 32 : (getGymLevel(item['gym_points']) < 8 ? 40 : (getGymLevel(item['gym_points']) < 10 ? 48: 56))
+  var gymSize = getGymLevel(item['gym_points']) < 5 ? 32 : (getGymLevel(item['gym_points']) < 8 ? 40 : (getGymLevel(item['gym_points']) < 10 ? 48 : 56))
   marker.setIcon({url: 'static/forts/' + Store.get('gymMarkerStyle') + '/' + gymTypes[item['team_id']] + (item['team_id'] !== 0 ? '_' + getGymLevel(item['gym_points']) : '') + '.png', scaledSize: new google.maps.Size(gymSize, gymSize)})
   marker.infoWindow.setContent(gymLabel(gymTypes[item['team_id']], item['team_id'], item['gym_points'], item['latitude'], item['longitude'], item['last_scanned'], item['name'], item['pokemon']))
   return marker
