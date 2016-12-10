@@ -161,7 +161,7 @@ def main():
     else:
         log.debug('Looking up coordinates in API')
         position = util.get_pos_by_name(args.location)
-        
+
     if position is None or not any(position):
         log.error("Location not found: '{}'".format(args.location))
         sys.exit()
