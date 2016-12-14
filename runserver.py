@@ -19,7 +19,6 @@ from flask_cors import CORS
 from flask_cache_bust import init_cache_busting
 
 from colorlog import ColoredFormatter
-import colorlog
 
 from pogom import config
 from pogom.app import Pogom
@@ -40,16 +39,16 @@ console = logging.StreamHandler()
 args = get_args()
 if not (args.verbose or args.very_verbose):
     console.setLevel(logging.INFO)
-    
+
 formatter = ColoredFormatter(
     '%(log_color)s%(asctime)s %(threadName)16s  %(name)-14s %(levelname)-8s %(message)s',
     datefmt='%m-%d %H:%M:%S',
     reset=True,
     log_colors={
-        'DEBUG':    'blue',
-        'INFO':     'white',
-        'WARNING':  'yellow',
-        'ERROR':    'red',
+        'DEBUG': 'blue',
+        'INFO': 'white',
+        'WARNING': 'yellow',
+        'ERROR': 'red',
         'CRITICAL': 'red,bg_white',
     },
     secondary_log_colors={},
