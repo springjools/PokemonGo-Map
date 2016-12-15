@@ -22,6 +22,7 @@ from datetime import datetime, timedelta
 from base64 import b64encode
 from cachetools import TTLCache
 from cachetools import cached
+from peewee import OperationalError
 
 from . import config
 from .utils import get_pokemon_name, get_pokemon_rarity, get_pokemon_types, get_args, \
@@ -29,6 +30,7 @@ from .utils import get_pokemon_name, get_pokemon_rarity, get_pokemon_types, get_
     get_move_energy, get_move_type
 from .transform import transform_from_wgs_to_gcj, get_new_coords
 from .customLog import printPokemon
+from bot import sendPokefication
 log = logging.getLogger(__name__)
 
 args = get_args()
@@ -36,7 +38,17 @@ flaskDb = FlaskDB()
 cache = TTLCache(maxsize=100, ttl=60 * 5)
 
 db_schema_version = 10
-
+warnQueSize = 150
+EncounterErrors = {
+    0: 'ENCOUNTER_ERROR',
+    1: 'ENCOUNTER_SUCCESS',
+    2: 'ENCOUNTER_NOT_FOUND',
+    3: 'ENCOUNTER_CLOSED',
+    4: 'ENCOUNTER_POKEMON_FLED',
+    5: 'ENCOUNTER_NOT_IN_RANGE',
+    6: 'ENCOUNTER_ALREADY_HAPPENED',
+    7: 'POKEMON_INVENTORY_FULL'
+}
 
 class MyRetryDB(RetryOperationalError, PooledMySQLDatabase):
     pass
@@ -146,16 +158,19 @@ class Pokemon(BaseModel):
         gc.disable()
 
         pokemons = []
-        for p in list(query):
+        try:
+            for p in list(query):
 
-            p['pokemon_name'] = get_pokemon_name(p['pokemon_id'])
-            p['pokemon_rarity'] = get_pokemon_rarity(p['pokemon_id'])
-            p['pokemon_types'] = get_pokemon_types(p['pokemon_id'])
-            if args.china:
-                p['latitude'], p['longitude'] = \
-                    transform_from_wgs_to_gcj(p['latitude'], p['longitude'])
-            pokemons.append(p)
-
+                p['pokemon_name'] = get_pokemon_name(p['pokemon_id'])
+                p['pokemon_rarity'] = get_pokemon_rarity(p['pokemon_id'])
+                p['pokemon_types'] = get_pokemon_types(p['pokemon_id'])
+                if args.china:
+                    p['latitude'], p['longitude'] = \
+                        transform_from_wgs_to_gcj(p['latitude'], p['longitude'])
+                pokemons.append(p)
+        except OperationalError as e:
+            log.warn("OperationalError:{}".format(e))
+        
         # Re-enable the GC.
         gc.enable()
 
@@ -1463,8 +1478,8 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, a
     # Check for a 0/0/0 bad scan
     # If we saw nothing and there should be visible forts, it's bad
     if not len(wild_pokemon) and not len(forts) and ScannedLocation.visible_forts(step_location):
-        log.warning('Bad scan. Parsing found 0/0/0 pokemons/pokestops/gyms')
-        log.info('Common causes: captchas, IP bans, or using -ng and -nk arguments')
+        log.debug('Bad scan. Parsing found 0/0/0 pokemons/pokestops/gyms')
+        log.debug('Common causes: captchas, IP bans, or using -ng and -nk arguments')
         return {
             'count': 0,
             'gyms': gyms,
@@ -1473,8 +1488,8 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, a
         }
 
     if not len(nearby_pokemons) and not len(wild_pokemon):
-        log.warning('Nothing on nearby_pokemons or wild. Speed violation?')
-        log.info("Common causes: not using -speed, deleting or dropping the WorkerStatus table without waiting before restarting, or there really aren't any pokemon in 200m")
+        log.debug('Nothing on nearby_pokemons or wild. Speed violation?')
+        log.debug("Common causes: not using -speed, deleting or dropping the WorkerStatus table without waiting before restarting, or there really aren't any pokemon in 200m")
 
     scan_loc = ScannedLocation.get_by_loc(step_location)
 
@@ -1596,6 +1611,18 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, a
                     'time_until_hidden_ms': p['time_till_hidden_ms']
                 })
                 wh_update_queue.put(('pokemon', wh_poke))
+
+            # Send to bot
+            sendPokefication(       
+                p['pokemon_data']['pokemon_id'],
+                p['latitude'],
+                p['longitude'],
+                disappear_time,
+                b64encode(str(p['encounter_id'])),
+                pokemons[p['encounter_id']]['individual_attack'] if 'individual_attack' in pokemons[p['encounter_id']] else None,
+                pokemons[p['encounter_id']]['individual_defense'] if 'individual_defense' in pokemons[p['encounter_id']] else None,
+                pokemons[p['encounter_id']]['individual_stamina'] if 'individual_stamina' in pokemons[p['encounter_id']] else None
+            )
 
     if len(forts):
         if config['parse_pokestops']:
@@ -1744,7 +1771,8 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, a
         'count': len(wild_pokemon) + len(forts),
         'gyms': gyms,
         'sp_id_list': sp_id_list,
-        'bad_scan': False
+        'bad_scan': False,
+        'count2': [len(pokemons),len(pokestops),len(gyms)]
     }
 
 
@@ -1887,9 +1915,9 @@ def db_updater(args, q):
                 log.debug('Upserted to %s, %d records (upsert queue remaining: %d)',
                           model.__name__,
                           len(data),
-                          q.qsize())
-                if q.qsize() > 50:
-                    log.warning("DB queue is > 50 (@%d); try increasing --db-threads", q.qsize())
+                          q.qsize())        
+                if q.qsize() > warnQueSize:
+                    log.warning("DB queue is > {} ({}); try increasing --db-threads".format(warnQueSize,q.qsize()))
 
         except Exception as e:
             log.exception('Exception in db_updater: %s', e)

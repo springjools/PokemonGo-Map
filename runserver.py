@@ -19,6 +19,10 @@ from flask_cors import CORS
 from flask_cache_bust import init_cache_busting
 
 from colorlog import ColoredFormatter
+import colorama
+import socket
+from datetime import datetime
+from pygeocoder import Geocoder
 
 from pogom import config
 from pogom.app import Pogom
@@ -37,12 +41,14 @@ pgoapi_version = "1.1.7"
 # define a Handler which writes INFO messages or higher to the sys.stderr and with colored format
 console = logging.StreamHandler()
 args = get_args()
+colorama.init()
+
 if not (args.verbose or args.very_verbose):
     console.setLevel(logging.INFO)
 
 formatter = ColoredFormatter(
     '%(log_color)s%(asctime)s %(threadName)16s  %(name)-14s %(levelname)-8s %(message)s',
-    datefmt='%m-%d %H:%M:%S',
+    datefmt='%m-%d %H:%M',
     reset=True,
     log_colors={
         'DEBUG': 'blue',
@@ -94,6 +100,7 @@ if not hasattr(pgoapi, "__version__") or StrictVersion(pgoapi.__version__) < Str
     log.critical("It seems `pgoapi` is not up-to-date. Try running pip install --upgrade -r requirements.txt again.")
     sys.exit(1)
 
+bannedIPList = []
 
 # Patch to make exceptions in threads cause an exception.
 def install_thread_excepthook():
@@ -163,6 +170,16 @@ def main():
     logging.getLogger('pgoapi.rpc_api').setLevel(logging.INFO)
     logging.getLogger('werkzeug').setLevel(logging.ERROR)
 
+    #more custom ones
+    logging.getLogger('pgoapi.auth').setLevel(logging.WARNING)
+    logging.getLogger('pgoapi.auth_ptc').setLevel(logging.WARNING)
+    logging.getLogger('pogom.manual_captcha').setLevel(logging.ERROR)
+    logging.getLogger('pogom').setLevel(logging.INFO)
+    #logging.getLogger('pogom.search').setLevel(logging.INFO)
+    logging.getLogger('pogom.models').setLevel(logging.WARNING)
+    logging.getLogger('pogom.bot').setLevel(logging.INFO)
+    logging.getLogger('pogom.connectionpool').setLevel(logging.CRITICAL)
+    logging.getLogger('urllib3.connectionpool').setLevel(logging.CRITICAL)
     config['parse_pokemon'] = not args.no_pokemon
     config['parse_pokestops'] = not args.no_pokestops
     config['parse_gyms'] = not args.no_gyms
@@ -240,6 +257,24 @@ def main():
     new_location_queue = Queue()
     new_location_queue.put(position)
 
+    #write log file headers
+    time_0 = datetime.now()
+    street      = str(round(position[0],3))
+    streetnum   = str(round(position[1],3))
+    numusers    = len(args.username)
+    log.info("Found {} workers".format(numusers))
+    try:
+        geocode     = Geocoder.reverse_geocode(position[0],position[1])
+        street      = geocode.route
+        streetnum   = geocode.street_number
+        
+        if not streetnum: streetnum = "?"
+        log.info("Beginning scan at: {} {}".format(street,streetnum))
+    except Exception as e:
+        log.warning("Geocode failed:{}".format(e))
+    with open("var/laps.log", "a") as myfile:
+        myfile.write("\r--------------------------\rStart: {} from {} {} with {} workers\r\n".format(time_0.strftime('%Y-%m-%d %H:%M:%S'),street,streetnum,numusers))
+        myfile.write("{}\t {}\t\t\t {}:{}\t {}(%) \t{} \t\t{} \t\t{} \t{} \t{} \t{}\r".format("Lap","Time","mm","ss","Success","poke","gyms","success","fail","skip","no items"))
     # DB Updates
     db_updates_queue = Queue()
 
