@@ -19,7 +19,7 @@ from flask_cors import CORS
 from flask_cache_bust import init_cache_busting
 
 from colorlog import ColoredFormatter
-import colorama
+
 import socket
 from datetime import datetime
 from pygeocoder import Geocoder
@@ -34,6 +34,9 @@ from pogom.webhook import wh_updater
 
 from pogom.proxy import check_proxies, proxies_refresher
 
+from colorama import init
+init()
+
 # Currently supported pgoapi.
 pgoapi_version = "1.1.7"
 
@@ -41,7 +44,6 @@ pgoapi_version = "1.1.7"
 # define a Handler which writes INFO messages or higher to the sys.stderr and with colored format
 console = logging.StreamHandler()
 args = get_args()
-colorama.init()
 
 if not (args.verbose or args.very_verbose):
     console.setLevel(logging.INFO)
