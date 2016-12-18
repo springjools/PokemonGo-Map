@@ -54,6 +54,8 @@ import schedulers
 from .proxy import get_new_proxy
 
 import terminalsize
+from colorama import init
+init()
 
 log = logging.getLogger(__name__)
 
@@ -65,7 +67,7 @@ total_gyms = 0
 _loop = 0
 time_0 = datetime.now()
 loop_notified = True
-globalstatus = {'success' : 0, 'fail' : 0, 'skip' : 0, 'noitems' : 0}
+globalstatus = {'success' : 0, 'fail' : 0, 'skip' : 0, 'noitems' : 0, 'captcha': 0, 'solved': 0, 'spawn': 0, 'TTH': 0, 'empty-spawn':0, 'new-spawn' : 0}
 roundLock = threading.Lock()
 
 # Apply a location jitter.
@@ -274,7 +276,7 @@ def worker_status_db_thread(threads_status, name, db_updates_queue):
 
 # The main search loop that keeps an eye on the over all process.
 def search_overseer_thread(args, new_location_queue, pause_bit, heartb, db_updates_queue, wh_queue):
-
+    #log = logging.getLogger('overseer')
     log.info('Search overseer starting')
 
     search_items_queue_array = []
@@ -583,9 +585,15 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                         break
 
                 # Grab the next thing to search (when available)
-                step, step_location, appears, leaves, messages = scheduler.next_item(status)
+                step, step_location, appears, leaves, messages = scheduler.next_item(status) # kind
+                kind = None
                 status['message'] = messages['wait']
-
+                if kind:
+                    if kind == 'TTH':
+                        globalstatus['TTH'] +=1
+                    elif kind == 'spawn':
+                        globalstatus['spawn'] += 1
+                        
                 # Using step as a flag for no valid next location returned
                 if step == -1:
                     time.sleep(scheduler.delay(status['last_scan_date']))
@@ -638,7 +646,7 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
 
                 # putting this message after the check_login so the messages aren't out of order
                 status['message'] = messages['search']
-                log.info(status['message'])
+                log.debug(status['message'])
 
                 # Make the actual request. (finally!)
                 scan_date = datetime.utcnow()
@@ -654,6 +662,7 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                 if not response_dict:
                     status['fail'] += 1
                     consecutive_fails += 1
+                    globalstatus['fail'] += 1
                     status['message'] = messages['invalid']
                     log.warn(status['message'])
                     time.sleep(scheduler.delay(status['last_scan_date']))
@@ -665,6 +674,7 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                     if args.captcha_solving:
                         captcha_url = response_dict['responses']['CHECK_CHALLENGE']['challenge_url']
                         if len(captcha_url) > 1:
+                            globalstatus['captcha'] += 1
                             if args.captcha_key is None:
                                 if not args.validate_chrome:
                                     status['message'] = 'Account {} is encountering a captcha, But ChromeDriver is not Installed on your Python Scripts Folder'.format(account['username'])
@@ -686,6 +696,7 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                                         response = api.verify_challenge(token=captcha_token)
                                         if 'success' in response['responses']['VERIFY_CHALLENGE']:
                                             status['message'] = "Account {} successfully uncaptcha'd".format(account['username'])
+                                            globalstatus['solved'] += 1
                                             log.info(status['message'])
                                         else:
                                             status['message'] = "Account {} failed verifyChallenge, putting away account for now".format(account['username'])
@@ -706,6 +717,7 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                                     response = api.verify_challenge(token=captcha_token)
                                     if 'success' in response['responses']['VERIFY_CHALLENGE']:
                                         status['message'] = "Account {} successfully uncaptcha'd".format(account['username'])
+                                        globalstatus['solved'] += 1
                                         log.info(status['message'])
                                     else:
                                         status['message'] = "Account {} failed verifyChallenge, putting away account for now".format(account['username'])
@@ -724,14 +736,19 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                     if parsed and parsed['count'] > 0:
                         status['success'] += 1
                         consecutive_noitems = 0
+                        
                     else:
                         status['noitems'] += 1
                         consecutive_noitems += 1
+                        globalstatus['noitems'] += 1
                     consecutive_fails = 0
                     status['message'] = 'Search at {:6f},{:6f} completed with {} finds'.format(step_location[0], step_location[1], parsed['count'] if parsed else 0)
                     log.debug(status['message'])
                     if parsed and 'count2' in parsed and parsed['count2']:
-                        total_pokemons += parsed['count2'][0]
+                        total_pokemons += parsed['count2']
+                        globalstatus['success'] += 1
+                    if parsed and 'gymcount' in parsed and parsed['gymcount']:
+                        total_gyms = parsed['gymcount']
                 # except KeyError as e:
                 except Exception as e:
                     parsed = False
@@ -957,6 +974,8 @@ def printResults(step):
     global loop_notified
     global globalstatus
     
+    #print "Round {}, step {}, T0:{}".format(_loop, step,time_0)
+    
     with roundLock:
         if step > 100: 
             loop_notified = False
@@ -973,16 +992,16 @@ def printResults(step):
                 laptime = str(time_1.strftime("%H:%M:%S"))
                 minStr = str(dmin)
                 secStr = str(dsec) if dsec >= 10 else "0" + str(dsec)
-                
+                                
                 print ""
                 print "*************************"
                 print "Completed round {} in {}m {}s. Found {} pokemon and {} gyms.".format(_loop,minStr,secStr,total_pokemons,total_gyms)
                 try:
                     srate = round(100*(globalstatus['success']/(globalstatus['success']+globalstatus['fail']+globalstatus['skip']+globalstatus['noitems'])))
                     
-                    print "Success rate: {} %".format(srate)
+                    print "Success rate: {} %, captchas: {} ({})".format(srate,globalstatus['captcha'],globalstatus['solved'])
                     with open("var/laps.log", "a") as myfile:
-                        myfile.write("{}\t {}\t\t {}:{}\t {}\t\t\t{}\t\t {}\t\t{}\t\t{}\t\t{}\t\t\t {}\r".format(
+                        myfile.write("{}\t {}\t\t {}:{}\t {}\t\t\t{}\t\t {}\t\t{}\t\t{}\t\t{}/{}\t\t\t {}\r".format(
                                     _loop,
                                     laptime,
                                     minStr,
@@ -992,23 +1011,27 @@ def printResults(step):
                                     total_gyms,
                                     globalstatus['success'],
                                     globalstatus['fail'],
-                                    globalstatus['skip'],
+                                    globalstatus['solved'],
+                                    globalstatus['captcha'],
                                     globalstatus['noitems']))
-                except ZeroDivisionError:
+                except ZeroDivisionError as e:
+                    print "{},{},{},{}".format(globalstatus['success'],globalstatus['fail'],globalstatus['skip'],globalstatus['noitems'])
+                    log.warn("ZeroDivisionError: {}".format(e))
                     return
                 
                 time_0 = datetime.now()
                 total_gyms = 0
                 total_pokemons = 0
-                globalstatus = {'success' : 0, 'fail' : 0, 'skip' : 0, 'noitems' : 0}
+                globalstatus = {'success' : 0, 'fail' : 0, 'skip' : 0, 'noitems' : 0, 'captcha': 0, 'solved': 0, 'spawn': 0, 'TTH': 0, 'empty-spawn':0, 'new-spawn' : 0}
                 loop_notified = True
                 print "********************"
                 print ""
         percent = step/ total_points
-        bar_length = 32
+        bar_length = 24
         hashes = '#' * int(round(percent * bar_length))
         spaces = ' ' * (bar_length - len(hashes))
-        sys.stdout.write("\rRound {2}:       [{0}]  {1}%\t    Step {3} of {4}. Pok:{5}, Gym:{6} (Su:{7}, Fa:{8}, Sk:{9}, No:{10})   \r".format(   hashes + spaces, 
+        #print "Ca: {}, So:{}".format(globalstatus['captcha'],globalstatus['solved'])
+        sys.stdout.write('\033[33m' + "\rRound {2}:   [{0}]  {1}%\t    Step {3} of {4}. Pok:{5}, Gym:{6} (Su:{7}, Fa:{8}, Em:{10}, Ca:{11}/{9}) S:{12}, T:{13} N:{14}, E:{15}   \r".format(   hashes + spaces, 
                                                 int(round(percent * 100)),
                                                 _loop+1,
                                                 step,
@@ -1017,8 +1040,14 @@ def printResults(step):
                                                 total_gyms,
                                                 globalstatus['success'],
                                                 globalstatus['fail'],
-                                                globalstatus['skip'],
-                                                globalstatus['noitems']))
+                                                globalstatus['captcha'],
+                                                globalstatus['noitems'],
+                                                globalstatus['solved'],
+                                                globalstatus['spawn'],
+                                                globalstatus['TTH'],
+                                                globalstatus['new-spawn'],
+                                                globalstatus['empty-spawn'],
+                                                ) + '\033[39m')
         sys.stdout.flush()
     
 

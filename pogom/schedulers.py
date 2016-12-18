@@ -509,8 +509,8 @@ class SpeedScan(HexSearch):
 
         log.info('Doing %s distance calcs to assign %d spawn points to %d scans',
                  "{:,}".format(len(spawnpoints) * len(scans)), len(spawnpoints), len(scans))
-        log.info('Until the intial scan is complete, this step can take a long time for large -st.')
-        log.info('If wait is too long, reduce the -st size and complete intial scan before increasing -st again.')
+        log.debug('Until the intial scan is complete, this step can take a long time for large -st.')
+        log.debug('If wait is too long, reduce the -st size and complete intial scan before increasing -st again.')
         scan_spawn_point = {}
         ScannedLocation.link_spawn_points(scans, initial, spawnpoints, self.step_distance, scan_spawn_point)
         if len(scan_spawn_point):
@@ -727,8 +727,8 @@ class SpeedScan(HexSearch):
                              self.spawns_found, spawns_missed, found_percent)
                     self.spawn_percent.append(round(found_percent, 1))
                     if self.spawns_missed_delay:
-                        log.warning('Missed spawn IDs with times after spawn:')
-                        log.warning(self.spawns_missed_delay)
+                        log.info('Missed spawn IDs with times after spawn:')
+                        log.info(self.spawns_missed_delay)
                     log.info('History: %s', str(self.spawn_percent).strip('[]'))
 
                 sum = self.scans_done + len(self.scans_missed_list)
@@ -737,7 +737,7 @@ class SpeedScan(HexSearch):
                          self.scans_done, len(self.scans_missed_list), good_percent)
                 self.scan_percent.append(round(good_percent, 1))
                 if self.scans_missed_list:
-                    log.warning('Missed scans: %s', Counter(self.scans_missed_list).most_common(3))
+                    log.info('Missed scans: %s', Counter(self.scans_missed_list).most_common(3))
                     log.info('History: %s', str(self.scan_percent).strip('[]'))
                 self.status_message = 'Initial scan: {:.2f}%, TTH found: {:.2f}%, '.format(band_percent, tth_found * 100.0 / active_sp)
                 self.status_message += 'Spawns reached: {:.2f}%, Spawns found: {:.2f}%, Good scans {:.2f}%'\
@@ -853,7 +853,8 @@ class SpeedScan(HexSearch):
         status['index_of_queue_item'] = i
 
         messages['search'] = 'Scanning step {} for a {}'.format(best['step'], best['kind'])
-        return best['step'], best['loc'], 0, 0, messages
+        
+        return best['step'], best['loc'], 0, 0, messages #  best['kind']
 
     def task_done(self, status, parsed=False):
         if parsed:
@@ -871,7 +872,7 @@ class SpeedScan(HexSearch):
             elif parsed['bad_scan']:
                 self.scans_missed_list.append(cellid(item['loc']))
                 item['done'] = None
-                log.info('Putting back step %d in queue', item['step'])
+                log.debug('Putting back step %d in queue', item['step'])
             else:
                 # Scan returned data
                 self.scans_done += 1

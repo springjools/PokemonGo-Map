@@ -33,6 +33,9 @@ from .customLog import printPokemon
 from bot import sendPokefication
 log = logging.getLogger(__name__)
 
+import pprint
+pp                          = pprint.PrettyPrinter(indent=4)
+
 args = get_args()
 flaskDb = FlaskDB()
 cache = TTLCache(maxsize=100, ttl=60 * 5)
@@ -1005,6 +1008,7 @@ class WorkerStatus(BaseModel):
         # Retry after a second to give peewee time to load
         while True:
             try:
+                
                 result = query[0] if len(query) else {
                     'username': username,
                     'success': 0,
@@ -1021,8 +1025,8 @@ class WorkerStatus(BaseModel):
             except Exception as e:
                 log.error('Exception in get_worker under account {} Exception message: {}'.format(username, e))
                 traceback.print_exc(file=sys.stdout)
+                print "Error data: user: {}, modified: {}".format(username,datetime.utcnow())
                 time.sleep(1)
-
         return result
 
 
@@ -1464,6 +1468,9 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, a
     new_spawn_points = []
     sp_id_list = []
     now_secs = date_secs(now_date)
+    empty_spawn = 0
+    new_spawn = 0
+    
 
     # consolidate the individual lists in each cell into one list of pokemon and a list of forts
     cells = map_dict['responses']['GET_MAP_OBJECTS']['map_cells']
@@ -1736,15 +1743,15 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, a
             if clock_between(endpoints[0], now_secs, endpoints[1]):
                 sp['missed_count'] += 1
                 spawn_points[sp['id']] = sp
-                log.warning('%s kind spawnpoint %s has no pokemon %d times in a row',
+                log.debug('%s kind spawnpoint %s has no pokemon %d times in a row',
                             sp['kind'], sp['id'], sp['missed_count'])
-                log.info('Possible causes: Still doing initial scan, or super rare double spawnpoint during hidden period, or Niantic has removed spawnpoint')
+                log.debug('Possible causes: Still doing initial scan, or super rare double spawnpoint during hidden period, or Niantic has removed spawnpoint')
 
         if (not SpawnPoint.tth_found(sp) and scan_loc['done'] and
                 (sp['earliest_unseen'] - sp['latest_seen'] - args.spawn_delay) % 3600 < 60):
-            log.warning('Spawnpoint %s was unable to locate a TTH, with only %ss after pokemon last seen',
+            log.debug('Spawnpoint %s was unable to locate a TTH, with only %ss after pokemon last seen',
                         sp['id'], (sp['earliest_unseen'] - sp['latest_seen']) % 3600)
-            log.info('Embiggening search for TTH by 15 minutes to try again')
+            log.debug('Embiggening search for TTH by 15 minutes to try again')
             if sp_id not in sp_id_list:
                 SpawnpointDetectionData.classify(sp, scan_loc, now_secs)
             sp['latest_seen'] = (sp['latest_seen'] - 60) % 3600
@@ -1766,13 +1773,18 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, a
         db_update_queue.put((ScanSpawnPoint, scan_spawn_points))
         if len(sightings):
             db_update_queue.put((SpawnpointDetectionData, sightings))
-
+    
+    #pp.pprint(gyms)
+    
     return {
         'count': len(wild_pokemon) + len(forts),
         'gyms': gyms,
         'sp_id_list': sp_id_list,
         'bad_scan': False,
-        'count2': [len(pokemons),len(pokestops),len(gyms)]
+        'new_spawn': new_spawn,
+        'empty_spawn' : empty_spawn,
+        'count2' : len(wild_pokemon),
+        'gymcount' : len(gyms)
     }
 
 

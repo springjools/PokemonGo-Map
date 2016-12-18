@@ -329,7 +329,7 @@ def main():
         argset = (args, new_location_queue, pause_bit, heartbeat, db_updates_queue, wh_updates_queue)
 
         log.debug('Starting a %s search thread', args.scheduler)
-        search_thread = Thread(target=search_overseer_thread, name='search-overseer', args=argset)
+        search_thread = Thread(target=search_overseer_thread, name='overseer', args=argset)
         search_thread.daemon = True
         search_thread.start()
 
