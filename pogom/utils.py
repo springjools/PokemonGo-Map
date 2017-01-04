@@ -326,7 +326,7 @@ def get_args():
 
                     # If the number of fields is three then assume this is
                     # "ptc,username,password". As requested.
-                    if num_fields == 3:
+                    if num_fields >= 3:
                         # If field 0 is not ptc or google something is wrong!
                         if fields[0].lower() == 'ptc' or fields[0].lower() == 'google':
                             args.auth_service.append(fields[0])
@@ -347,8 +347,8 @@ def get_args():
                         else:
                             field_error = 'password'
 
-                    if num_fields > 3:
-                        print 'Too many fields in accounts file: max supported are 3 fields. Found {} fields'.format(num_fields)
+                    if num_fields > 8:
+                        print 'Too many fields in accounts file: max supported are 8 fields. Found {} fields'.format(num_fields)
                         sys.exit(1)
 
                     # If something is wrong display error.
