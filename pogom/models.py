@@ -22,6 +22,7 @@ from datetime import datetime, timedelta
 from base64 import b64encode
 from cachetools import TTLCache
 from cachetools import cached
+from peewee import OperationalError
 
 from . import config
 from .utils import get_pokemon_name, get_pokemon_rarity, get_pokemon_types, get_args, \
@@ -29,14 +30,28 @@ from .utils import get_pokemon_name, get_pokemon_rarity, get_pokemon_types, get_
     get_move_energy, get_move_type
 from .transform import transform_from_wgs_to_gcj, get_new_coords
 from .customLog import printPokemon
+from bot import sendPokefication
 log = logging.getLogger(__name__)
+
+import pprint
+pp                          = pprint.PrettyPrinter(indent=4)
 
 args = get_args()
 flaskDb = FlaskDB()
 cache = TTLCache(maxsize=100, ttl=60 * 5)
 
 db_schema_version = 11
-
+warnQueSize = 150
+EncounterErrors = {
+    0: 'ENCOUNTER_ERROR',
+    1: 'ENCOUNTER_SUCCESS',
+    2: 'ENCOUNTER_NOT_FOUND',
+    3: 'ENCOUNTER_CLOSED',
+    4: 'ENCOUNTER_POKEMON_FLED',
+    5: 'ENCOUNTER_NOT_IN_RANGE',
+    6: 'ENCOUNTER_ALREADY_HAPPENED',
+    7: 'POKEMON_INVENTORY_FULL'
+}
 
 class MyRetryDB(RetryOperationalError, PooledMySQLDatabase):
     pass
@@ -146,16 +161,19 @@ class Pokemon(BaseModel):
         gc.disable()
 
         pokemons = []
-        for p in list(query):
+        try:
+            for p in list(query):
 
-            p['pokemon_name'] = get_pokemon_name(p['pokemon_id'])
-            p['pokemon_rarity'] = get_pokemon_rarity(p['pokemon_id'])
-            p['pokemon_types'] = get_pokemon_types(p['pokemon_id'])
-            if args.china:
-                p['latitude'], p['longitude'] = \
-                    transform_from_wgs_to_gcj(p['latitude'], p['longitude'])
-            pokemons.append(p)
-
+                p['pokemon_name'] = get_pokemon_name(p['pokemon_id'])
+                p['pokemon_rarity'] = get_pokemon_rarity(p['pokemon_id'])
+                p['pokemon_types'] = get_pokemon_types(p['pokemon_id'])
+                if args.china:
+                    p['latitude'], p['longitude'] = \
+                        transform_from_wgs_to_gcj(p['latitude'], p['longitude'])
+                pokemons.append(p)
+        except OperationalError as e:
+            log.warn("OperationalError:{}".format(e))
+        
         # Re-enable the GC.
         gc.enable()
 
@@ -1599,6 +1617,18 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, a
                 })
                 wh_update_queue.put(('pokemon', wh_poke))
 
+            # Send to bot
+            sendPokefication(       
+                p['pokemon_data']['pokemon_id'],
+                p['latitude'],
+                p['longitude'],
+                disappear_time,
+                b64encode(str(p['encounter_id'])),
+                pokemons[p['encounter_id']]['individual_attack'] if 'individual_attack' in pokemons[p['encounter_id']] else None,
+                pokemons[p['encounter_id']]['individual_defense'] if 'individual_defense' in pokemons[p['encounter_id']] else None,
+                pokemons[p['encounter_id']]['individual_stamina'] if 'individual_stamina' in pokemons[p['encounter_id']] else None
+            )
+
     if len(forts):
         if config['parse_pokestops']:
             stop_ids = [f['id'] for f in forts if f.get('type') == 1]
@@ -1716,10 +1746,10 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, a
 
         if (not SpawnPoint.tth_found(sp) and scan_loc['done'] and
                 (sp['earliest_unseen'] - sp['latest_seen'] - args.spawn_delay) % 3600 < 60):
-            log.warning('Spawnpoint %s was unable to locate a TTH, with only %ss after Pokemon last seen',
+            log.debug('Spawnpoint %s was unable to locate a TTH, with only %ss after pokemon last seen',
                         sp['id'], (sp['earliest_unseen'] - sp['latest_seen']) % 3600)
-            log.info('Embiggening search for TTH by 15 minutes to try again')
-            if sp['id'] not in sp_id_list:
+            log.debug('Embiggening search for TTH by 15 minutes to try again')
+            if sp_id not in sp_id_list:
                 SpawnpointDetectionData.classify(sp, scan_loc, now_secs)
             sp['latest_seen'] = (sp['latest_seen'] - 60) % 3600
             sp['earliest_unseen'] = (sp['earliest_unseen'] + 14 * 60) % 3600
@@ -1886,9 +1916,9 @@ def db_updater(args, q, db):
                 log.debug('Upserted to %s, %d records (upsert queue remaining: %d)',
                           model.__name__,
                           len(data),
-                          q.qsize())
-                if q.qsize() > 50:
-                    log.warning("DB queue is > 50 (@%d); try increasing --db-threads", q.qsize())
+                          q.qsize())        
+                if q.qsize() > warnQueSize:
+                    log.warning("DB queue is > {} ({}); try increasing --db-threads".format(warnQueSize,q.qsize()))
 
         except Exception as e:
             log.exception('Exception in db_updater: %s', e)

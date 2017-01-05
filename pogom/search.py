@@ -1,5 +1,6 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
+from __future__ import division
 
 '''
 Search Architecture:
@@ -26,11 +27,17 @@ import random
 import time
 import geopy
 import geopy.distance
+import sys
+from datetime import datetime, timedelta
 import requests
+from requests import ConnectionError
+from requests.exceptions import ChunkedEncodingError
+from peewee import OperationalError
 
 from datetime import datetime
 from threading import Thread
 from queue import Queue, Empty
+import threading
 
 from pgoapi import PGoApi
 from pgoapi.utilities import f2i
@@ -47,11 +54,21 @@ import schedulers
 from .proxy import get_new_proxy
 
 import terminalsize
+from colorama import init
+init()
 
 log = logging.getLogger(__name__)
 
 TIMESTAMP = '\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000'
 
+total_points = 0
+total_pokemons = 0
+total_gyms = 0
+_loop = 0
+time_0 = datetime.now()
+loop_notified = True
+globalstatus = {'success' : 0, 'fail' : 0, 'skip' : 0, 'noitems' : 0, 'captcha': 0, 'solved': 0, 'spawn': 0, 'TTH': 0, 'empty-spawn':0, 'new-spawn' : 0}
+roundLock = threading.Lock()
 
 # Apply a location jitter.
 def jitterLocation(location=None, maxMeters=10):
@@ -418,8 +435,19 @@ def search_overseer_thread(args, new_location_queue, pause_bit, heartb, db_updat
                     traceback.print_exc(file=sys.stdout)
                     time.sleep(10)
             else:
-                threadStatus['Overseer']['message'] = scheduler_array[
-                    i].get_overseer_message()
+                threadStatus['Overseer']['message'] = scheduler_array[i].get_overseer_message()             
+                remaining = search_items_queue.qsize()
+                global total_points
+                total_points = scheduler.getsize()
+                if total_points > 0:
+                    current_point = total_points - remaining
+                    #print "Remaining: {}".format(len(locations))
+                    #print "Progress is {}/{} points".format(current_point,total_points)
+                    if args.speed_scan:
+                        scansdone = scheduler.getscanned()
+                        printResults(scansdone)
+                    else:
+                        printResults(current_point)
 
         # Now we just give a little pause here.
         time.sleep(1)
@@ -489,8 +517,11 @@ def generate_hive_locations(current_location, step_distance, step_limit, hive_co
 
 def search_worker_thread(args, account_queue, account_failures, search_items_queue, pause_bit, status, dbq, whq, scheduler):
 
-    log.debug('Search worker thread starting...')
-
+    log.debug('Search worker thread starting')
+    global globalstatus
+    global total_pokemons
+    global total_gyms
+    
     # The outer forever loop restarts only when the inner one is intentionally exited - which should only be done when the worker is failing too often, and probably banned.
     # This reinitializes the API and grabs a new account from the queue.
     while True:
@@ -498,20 +529,16 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
             status['starttime'] = now()
 
             # Get an account.
-            status['message'] = 'Waiting to get new account from the queue...'
-            log.info(status['message'])
-
+            status['message'] = 'Waiting to get new account from the queue'
+            log.debug(status['message'])
             # Make sure the scheduler is done for valid locations
             while not scheduler.ready:
                 time.sleep(1)
 
             account = account_queue.get()
-            status.update(WorkerStatus.get_worker(
-                account['username'], scheduler.scan_location))
-
-            status['message'] = 'Switching to account {}.'.format(account[
-                                                                  'username'])
-            log.info(status['message'])
+            status.update(WorkerStatus.get_worker(account['username'], scheduler.scan_location))
+            status['message'] = 'Switching to account {}'.format(account['username'])
+            log.debug(status['message'])
 
             stagger_thread(args, account)
 
@@ -686,10 +713,9 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                 if not response_dict:
                     status['fail'] += 1
                     consecutive_fails += 1
-
+                    globalstatus['fail'] += 1
                     status['message'] = messages['invalid']
-                    log.error(status['message'])
-
+                    log.warn(status['message'])
                     time.sleep(scheduler.delay(status['last_scan_date']))
                     continue
 
@@ -702,6 +728,7 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                             'CHECK_CHALLENGE']['challenge_url']
 
                         if len(captcha_url) > 1:
+                            globalstatus['captcha'] += 1
                             if args.captcha_key is None:
                                 if not args.validate_chrome:
                                     status['message'] = 'Account {} is encountering a captcha, but ChromeDriver is not installed.'.format(account[
@@ -805,6 +832,12 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                     status['message'] = 'Search at {:6f},{:6f} completed with {} finds.'.format(
                         step_location[0], step_location[1], parsed['count'])
                     log.debug(status['message'])
+                    if parsed and 'count2' in parsed and parsed['count2']:
+                        total_pokemons += parsed['count2']
+                        globalstatus['success'] += 1
+                    if parsed and 'gymcount' in parsed and parsed['gymcount']:
+                        total_gyms = parsed['gymcount']
+                # except KeyError as e:
                 except Exception as e:
                     parsed = False
                     status['fail'] += 1
@@ -834,9 +867,12 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                             except GymDetails.DoesNotExist as e:
                                 gyms_to_update[gym['gym_id']] = gym
                                 continue
-
-                            # If we have a record of this gym already, check if
-                            # the gym has been updated since our last update.
+                            except OperationalError as e:
+                                log.warning("OperationalError: {}, skipping recording gym with team {}".format(e,gym['team_id']))
+                                time.sleep(random.random() + 3)
+                                #gyms_to_update[gym['gym_id']] = gym
+                                continue
+                            # if we have a record of this gym already, check if the gym has been updated since our last update
                             if record.last_scanned < gym['last_modified']:
                                 gyms_to_update[gym['gym_id']] = gym
                                 continue
@@ -879,7 +915,14 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                         log.debug(status['message'])
 
                         if gym_responses:
-                            parse_gyms(args, gym_responses, whq, dbq)
+                            try:
+                                parse_gyms(args, gym_responses, whq)
+                            except OperationalError as e:
+                                log.warning("OperationalError: {}, skipping parsing gym with team {}".format(e,gym['team_id']))
+                                time.sleep(random.random() + 3)
+                                continue
+
+                            parse_gyms(args, gym_responses, whq)
 
                 # Delay the desired amount after "scan" completion.
                 delay = scheduler.delay(status['last_scan_date'])
@@ -1043,6 +1086,90 @@ def stagger_thread(args, account):
     log.debug('Delaying thread startup for %.2f seconds...', delay)
     time.sleep(delay)
 
+def printResults(step):
+    global total_gyms
+    global total_pokemons
+    global time_0
+    global _loop
+    global loop_notified
+    global globalstatus
+    
+    #print "Round {}, step {}, T0:{}".format(_loop, step,time_0)
+    
+    with roundLock:
+        if step > 100: 
+            loop_notified = False
+        
+        if step <= 100 and (not loop_notified):
+            time_1 = datetime.now()
+            deltaTime = time_1 - time_0
+            dseconds = deltaTime.seconds
+            dhour = int(dseconds/3600)
+            dmin = int((dseconds/60))
+            dsec = int(dseconds-dmin*60)
+            if dmin > 5:
+                _loop += 1
+                laptime = str(time_1.strftime("%H:%M:%S"))
+                minStr = str(dmin)
+                secStr = str(dsec) if dsec >= 10 else "0" + str(dsec)
+                                
+                print ""
+                print "*************************"
+                print "Completed round {} in {}m {}s. Found {} pokemon and {} gyms.".format(_loop,minStr,secStr,total_pokemons,total_gyms)
+                try:
+                    srate = round(100*(globalstatus['success']/(globalstatus['success']+globalstatus['fail']+globalstatus['skip']+globalstatus['noitems'])))
+                    
+                    print "Success rate: {} %, captchas: {} ({})".format(srate,globalstatus['captcha'],globalstatus['solved'])
+                    with open("var/laps.log", "a") as myfile:
+                        myfile.write("{}\t {}\t\t {}:{}\t {}\t\t\t{}\t\t {}\t\t{}\t\t{}\t\t{}/{}\t\t\t {}\r".format(
+                                    _loop,
+                                    laptime,
+                                    minStr,
+                                    secStr,
+                                    srate,
+                                    total_pokemons,
+                                    total_gyms,
+                                    globalstatus['success'],
+                                    globalstatus['fail'],
+                                    globalstatus['solved'],
+                                    globalstatus['captcha'],
+                                    globalstatus['noitems']))
+                except ZeroDivisionError as e:
+                    print "{},{},{},{}".format(globalstatus['success'],globalstatus['fail'],globalstatus['skip'],globalstatus['noitems'])
+                    log.warn("ZeroDivisionError: {}".format(e))
+                    return
+                
+                time_0 = datetime.now()
+                total_gyms = 0
+                total_pokemons = 0
+                globalstatus = {'success' : 0, 'fail' : 0, 'skip' : 0, 'noitems' : 0, 'captcha': 0, 'solved': 0, 'spawn': 0, 'TTH': 0, 'empty-spawn':0, 'new-spawn' : 0}
+                loop_notified = True
+                print "********************"
+                print ""
+        percent = step/ total_points
+        bar_length = 24
+        hashes = '#' * int(round(percent * bar_length))
+        spaces = ' ' * (bar_length - len(hashes))
+        #print "Ca: {}, So:{}".format(globalstatus['captcha'],globalstatus['solved'])
+        sys.stdout.write('\033[33m' + "\rRound {2}:   [{0}]  {1}%\t    Step {3} of {4}. Pok:{5}, Gym:{6} (Su:{7}, Fa:{8}, Em:{10}, Ca:{11}/{9}) S:{12}, T:{13} N:{14}, E:{15}   \r".format(   hashes + spaces, 
+                                                int(round(percent * 100)),
+                                                _loop+1,
+                                                step,
+                                                total_points,
+                                                total_pokemons,
+                                                total_gyms,
+                                                globalstatus['success'],
+                                                globalstatus['fail'],
+                                                globalstatus['captcha'],
+                                                globalstatus['noitems'],
+                                                globalstatus['solved'],
+                                                globalstatus['spawn'],
+                                                globalstatus['TTH'],
+                                                globalstatus['new-spawn'],
+                                                globalstatus['empty-spawn'],
+                                                ) + '\033[39m')
+        sys.stdout.flush()
+    
 
 class TooManyLoginAttempts(Exception):
     pass
