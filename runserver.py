@@ -28,11 +28,13 @@ from pogom.search import search_overseer_thread
 from pogom.models import init_database, create_tables, drop_tables, Pokemon, db_updater, clean_db_loop
 from pogom.webhook import wh_updater
 
-from pogom.proxy import check_proxies, proxies_refresher
+from datetime import datetime
+from pygeocoder import Geocoder
 
 import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
 
+from pogom.proxy import check_proxies, proxies_refresher
 
 # Currently supported pgoapi.
 pgoapi_version = "1.1.7"
@@ -167,6 +169,16 @@ def main():
     logging.getLogger('pgoapi.rpc_api').setLevel(logging.INFO)
     logging.getLogger('werkzeug').setLevel(logging.ERROR)
 
+    #more custom ones
+    logging.getLogger('pgoapi.auth').setLevel(logging.WARNING)
+    logging.getLogger('pgoapi.auth_ptc').setLevel(logging.WARNING)
+    logging.getLogger('pogom.manual_captcha').setLevel(logging.ERROR)
+    logging.getLogger('pogom').setLevel(logging.INFO)
+    #logging.getLogger('pogom.search').setLevel(logging.INFO)
+    logging.getLogger('pogom.models').setLevel(logging.WARNING)
+    logging.getLogger('pogom.bot').setLevel(logging.INFO)
+    logging.getLogger('pogom.connectionpool').setLevel(logging.CRITICAL)
+    logging.getLogger('urllib3.connectionpool').setLevel(logging.CRITICAL)
     config['parse_pokemon'] = not args.no_pokemon
     config['parse_pokestops'] = not args.no_pokestops
     config['parse_gyms'] = not args.no_gyms
@@ -244,6 +256,24 @@ def main():
     new_location_queue = Queue()
     new_location_queue.put(position)
 
+    #write log file headers
+    time_0 = datetime.now()
+    street      = str(round(position[0],3))
+    streetnum   = str(round(position[1],3))
+    numusers    = len(args.username)
+    log.info("Found {} workers".format(numusers))
+    try:
+        geocode     = Geocoder.reverse_geocode(position[0],position[1])
+        street      = geocode.route
+        streetnum   = geocode.street_number
+        
+        if not streetnum: streetnum = "?"
+        log.info("Beginning scan at: {} {}".format(street,streetnum))
+    except Exception as e:
+        log.warning("Geocode failed:{}".format(e))
+    with open("var/laps.log", "a") as myfile:
+        myfile.write("\r--------------------------\rStart: {} from {} {} with {} workers\r\n".format(time_0.strftime('%Y-%m-%d %H:%M:%S'),street,streetnum,numusers))
+        myfile.write("{}\t {}\t\t\t {}:{}\t {}(%) \t{} \t\t{} \t\t{} \t{} \t{} \t{}\r".format("Lap","Time","mm","ss","Success","poke","gyms","success","fail","skip","no items"))
     # DB Updates
     db_updates_queue = Queue()
 
