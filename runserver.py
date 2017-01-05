@@ -30,6 +30,10 @@ from pogom.webhook import wh_updater
 
 from pogom.proxy import check_proxies, proxies_refresher
 
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
+
+
 # Currently supported pgoapi.
 pgoapi_version = "1.1.7"
 
