@@ -696,7 +696,7 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                 # Putting this message after the check_login so the messages
                 # aren't out of order.
                 status['message'] = messages['search']
-                log.info(status['message'])
+                log.debug(status['message'])
 
                 # Make the actual request.
                 scan_date = datetime.utcnow()
@@ -817,8 +817,7 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                                             {'account': account, 'last_fail_time': now(), 'reason': 'captcha failed to verify'})
                                         break
 
-                    parsed = parse_map(args, response_dict,
-                                       step_location, dbq, whq, api, scan_date)
+                    parsed = parse_map(args, response_dict, step_location, dbq, whq, api, scan_date)
                     scheduler.task_done(status, parsed)
 
                     if parsed['count'] > 0:
@@ -916,13 +915,11 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
 
                         if gym_responses:
                             try:
-                                parse_gyms(args, gym_responses, whq)
+                                parse_gyms(args, gym_responses, whq, dbq)
                             except OperationalError as e:
                                 log.warning("OperationalError: {}, skipping parsing gym with team {}".format(e,gym['team_id']))
                                 time.sleep(random.random() + 3)
                                 continue
-
-                            parse_gyms(args, gym_responses, whq)
 
                 # Delay the desired amount after "scan" completion.
                 delay = scheduler.delay(status['last_scan_date'])
