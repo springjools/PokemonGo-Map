@@ -1476,7 +1476,7 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, a
     # If we saw nothing and there should be visible forts, it's bad
     if not len(wild_pokemon) and not len(forts) and ScannedLocation.visible_forts(step_location):
         log.warning('Bad scan. Parsing found 0/0/0 Pokemon/pokestops/gyms')
-        log.info('Common causes: captchas, IP bans, or using -ng and -nk arguments')
+        log.debug('Common causes: captchas, IP bans, or using -ng and -nk arguments')
         return {
             'count': 0,
             'gyms': gyms,
@@ -1485,8 +1485,8 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, a
         }
 
     if not len(nearby_pokemons) and not len(wild_pokemon):
-        log.warning('No nearby or wild Pokemon. Speed violation?')
-        log.info("Common causes: not using -speed, deleting or dropping the WorkerStatus table without waiting before restarting, or there really aren't any Pokemon in 200m")
+        log.debug('No nearby or wild Pokemon. Speed violation?')
+        log.debug("Common causes: not using -speed, deleting or dropping the WorkerStatus table without waiting before restarting, or there really aren't any Pokemon in 200m")
 
     scan_loc = ScannedLocation.get_by_loc(step_location)
     done_already = scan_loc['done']
