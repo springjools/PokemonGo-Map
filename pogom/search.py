@@ -65,6 +65,7 @@ total_points = 0
 total_pokemons = 0
 total_gyms = 0
 _loop = 0
+_steps_scanned = 0
 time_0 = datetime.now()
 loop_notified = True
 globalstatus = {'success' : 0, 'fail' : 0, 'skip' : 0, 'noitems' : 0, 'captcha': 0, 'solved': 0, 'spawn': 0, 'TTH': 0, 'empty-spawn':0, 'new-spawn' : 0}
@@ -246,9 +247,11 @@ def status_printer(threadStatus, search_items_queue_array, db_updates_queue, wh_
 def account_recycler(accounts_queue, account_failures, args):
     while True:
         # Run once a minute.
-        time.sleep(60)
-        log.info('Account recycler running. Checking status of {} accounts.'.format(
-            len(account_failures)))
+        time.sleep(300)
+        if len(account_failures) > 0:
+            log.info('Account recycler running. Checking status of {} accounts.'.format(len(account_failures)))
+        else:
+            log.debug('Account recycler running. Checking status of {} accounts.'.format(len(account_failures)))
 
         # Create a new copy of the failure list to search through, so we can
         # iterate through it without it changing.
@@ -1109,12 +1112,12 @@ def printResults(step):
     global _loop
     global loop_notified
     global globalstatus
-    
-    #print "Round {}, step {}, T0:{}".format(_loop, step,time_0)
+    global _steps_scanned
     
     with roundLock:
         if step > 100: 
             loop_notified = False
+            _steps_scanned = step
         
         if step <= 100 and (not loop_notified):
             
@@ -1133,15 +1136,16 @@ def printResults(step):
                 if total_tries > 0:
                     print ""
                     print "*************************"
-                    print "Completed round {} in {}m {}s. Found {} pokemon and {} gyms.".format(_loop,minStr,secStr,total_pokemons,total_gyms)
+                    print "Completed round {} in {}m {}s. Steps: {}.Found {} pokemon and {} gyms.".format(_loop,minStr,secStr,_steps_scanned,total_pokemons,total_gyms)
                     try:
                         srate = round(100*(globalstatus['success']/total_tries))
                         
                         print "Success rate: {} %, captchas: {} ({})".format(srate,globalstatus['captcha'],globalstatus['solved'])
                         with open("var/laps.log", "a") as myfile:
-                            myfile.write("{}\t {}\t\t {}:{}\t {}\t\t\t{}\t\t {}\t\t{}\t\t{}\t\t{}/{}\t\t\t {}\r".format(
+                            myfile.write("{}\t {}\t {}\t\t {}:{}\t {}\t\t\t{}\t\t {}\t\t{}\t\t\t{}\t\t{}/{}\t\t\t {}\r".format(
                                         _loop,
                                         laptime,
+                                        _steps_scanned,
                                         minStr,
                                         secStr,
                                         srate,
@@ -1163,6 +1167,7 @@ def printResults(step):
                     total_pokemons = 0
                     globalstatus = {'success' : 0, 'fail' : 0, 'skip' : 0, 'noitems' : 0, 'captcha': 0, 'solved': 0, 'spawn': 0, 'TTH': 0, 'empty-spawn':0, 'new-spawn' : 0}
                     loop_notified = True
+                    steps_scanned = 0
                     print "********************"
                     print ""
         percent = step/ total_points

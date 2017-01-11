@@ -270,7 +270,7 @@ def main():
     street      = str(round(position[0],3))
     streetnum   = str(round(position[1],3))
     numusers    = len(args.username)
-    log.info("Found {} workers".format(numusers))
+    log.info("Using {} of {} workers".format(args.workers if args.workers else "all",numusers))
     try:
         geocode     = Geocoder.reverse_geocode(position[0],position[1])
         street      = geocode.route
@@ -281,8 +281,8 @@ def main():
     except Exception as e:
         log.warning("Geocode failed:{}".format(e))
     with open("var/laps.log", "a") as myfile:
-        myfile.write("\r--------------------------\rStart: {} from {} {} with {} workers\r\n".format(time_0.strftime('%Y-%m-%d %H:%M:%S'),street,streetnum,numusers))
-        myfile.write("{}\t {}\t\t\t {}:{}\t {}(%) \t{} \t\t{} \t\t{} \t{} \t{} \t{}\r".format("Lap","Time","mm","ss","Success","poke","gyms","success","fail","skip","no items"))
+        myfile.write("\r--------------------------\rStart: {} from {} {} with {}/{} workers{}\r\n".format(time_0.strftime('%Y-%m-%d %H:%M:%S'),street,streetnum,args.workers,numusers,", speedscan" if args.speed_scan else ""))
+        myfile.write("{}\t {}\t\t {} \t\t {}:{}\t {}(%) \t{} \t{} \t\t{} \t{} \t{} \t{}\r".format("Lap","Time","Steps","mm","ss","Success","poke","gyms","success","fail","captchas","no items"))
     # DB Updates
     db_updates_queue = Queue()
 
