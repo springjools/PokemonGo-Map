@@ -1017,6 +1017,9 @@ class WorkerStatus(BaseModel):
                     'longitude': loc[1] if loc else None
                 }
                 break
+            except AttributeError as e:
+                log.error('Attribute error with user {}: {}'.format(username, e))
+                time.sleep(5)
             except Exception as e:
                 log.error('Exception in get_worker under account {} Exception message: {}'.format(username, e))
                 traceback.print_exc(file=sys.stdout)

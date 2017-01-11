@@ -770,6 +770,7 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                                         if 'success' in response['responses']['VERIFY_CHALLENGE']:
                                             status['message'] = "Account {} successfully uncaptcha'd.".format(account[
                                                 'username'])
+                                            globalstatus['solved'] += 1
                                             log.info(status['message'])
                                             scan_date = datetime.utcnow()
                                             # Make another request for the same
