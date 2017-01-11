@@ -751,12 +751,12 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                                 else:
                                     status['message'] = 'Account {} is encountering a captcha, starting response sequence'.format(account[
                                                                                                                                   'username'])
-                                    log.warning(status['message'])
+                                    log.debug(status['message'])
                                     captcha_token = captcha_verifier(
                                         captcha_url, status)
                                     status['message'] = 'Retrieved captcha token, attempting to verify challenge for {}.'.format(account[
                                         'username'])
-                                    log.info(status['message'])
+                                    log.debug(status['message'])
                                     if captcha_token == 'Fail':
                                         status['message'] = 'Account {} failed verifyChallenge, putting away account for now.'.format(account[
                                                                                                                                       'username'])
@@ -847,7 +847,7 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                         total_pokemons += parsed['count2']
                         globalstatus['success'] += 1
                     if parsed and 'gymcount' in parsed and parsed['gymcount']:
-                        total_gyms = parsed['gymcount']
+                        total_gyms += parsed['gymcount']
                 # except KeyError as e:
                 except Exception as e:
                     parsed = False
@@ -939,7 +939,8 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                     delay, time.strftime('%H:%M:%S', time.localtime(time.time() + args.scan_delay)))
 
                 time.sleep(delay)
-
+        except AttributeError as e:
+            log.exception(traceback.format_exc(e))
         # Catch any process exceptions, log them, and continue the thread.
         except Exception as e:
             log.error('Exception in search_worker under account {} Exception message: {}.'.format(

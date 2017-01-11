@@ -1018,7 +1018,8 @@ class WorkerStatus(BaseModel):
                 }
                 break
             except AttributeError as e:
-                log.error('Attribute error with user {}: {}'.format(username, e))
+                log.exception(traceback.format_exc(e))
+                #log.error('Attribute error with user {}: {}'.format(username, e))
                 time.sleep(5)
             except Exception as e:
                 log.error('Exception in get_worker under account {} Exception message: {}'.format(username, e))
@@ -1776,7 +1777,9 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, a
         'count': len(wild_pokemon) + len(forts),
         'gyms': gyms,
         'sp_id_list': sp_id_list,
-        'bad_scan': False
+        'bad_scan': False,
+        'count2': len(wild_pokemon),
+        'gymcount' : len(gyms)
     }
 
 
