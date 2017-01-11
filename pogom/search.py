@@ -828,9 +828,12 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                                         account_failures.append(
                                             {'account': account, 'last_fail_time': now(), 'reason': 'captcha failed to verify'})
                                         break
-
-                    parsed = parse_map(args, response_dict, step_location, dbq, whq, api, scan_date)
-                    scheduler.task_done(status, parsed)
+                    try:
+                        parsed = parse_map(args, response_dict, step_location, dbq, whq, api, scan_date)
+                        scheduler.task_done(status, parsed)
+                    except OperationalError as e:
+                        log.warning("OperationalError: {}".format(e))
+                        time.sleep(10)
 
                     if parsed['count'] > 0:
                         status['success'] += 1
@@ -1111,6 +1114,7 @@ def printResults(step):
             loop_notified = False
         
         if step <= 100 and (not loop_notified):
+            
             time_1 = datetime.now()
             deltaTime = time_1 - time_0
             dseconds = deltaTime.seconds
@@ -1122,40 +1126,42 @@ def printResults(step):
                 laptime = str(time_1.strftime("%H:%M:%S"))
                 minStr = str(dmin)
                 secStr = str(dsec) if dsec >= 10 else "0" + str(dsec)
-                                
-                print ""
-                print "*************************"
-                print "Completed round {} in {}m {}s. Found {} pokemon and {} gyms.".format(_loop,minStr,secStr,total_pokemons,total_gyms)
-                try:
-                    srate = round(100*(globalstatus['success']/(globalstatus['success']+globalstatus['fail']+globalstatus['skip']+globalstatus['noitems'])))
+                total_tries = (globalstatus['success']+globalstatus['fail']+globalstatus['skip']+globalstatus['noitems'])
+                if total_tries > 0:
+                    print ""
+                    print "*************************"
+                    print "Completed round {} in {}m {}s. Found {} pokemon and {} gyms.".format(_loop,minStr,secStr,total_pokemons,total_gyms)
+                    try:
+                        srate = round(100*(globalstatus['success']/total_tries))
+                        
+                        print "Success rate: {} %, captchas: {} ({})".format(srate,globalstatus['captcha'],globalstatus['solved'])
+                        with open("var/laps.log", "a") as myfile:
+                            myfile.write("{}\t {}\t\t {}:{}\t {}\t\t\t{}\t\t {}\t\t{}\t\t{}\t\t{}/{}\t\t\t {}\r".format(
+                                        _loop,
+                                        laptime,
+                                        minStr,
+                                        secStr,
+                                        srate,
+                                        total_pokemons,
+                                        total_gyms,
+                                        globalstatus['success'],
+                                        globalstatus['fail'],
+                                        globalstatus['solved'],
+                                        globalstatus['captcha'],
+                                        globalstatus['noitems']))
+                    except ZeroDivisionError as e:
+                        log.exception(traceback.format_exc(e))
+                        print "{},{},{},{}".format(globalstatus['success'],globalstatus['fail'],globalstatus['skip'],globalstatus['noitems'])
+                        log.warn("ZeroDivisionError: {}".format(e))
+                        return
                     
-                    print "Success rate: {} %, captchas: {} ({})".format(srate,globalstatus['captcha'],globalstatus['solved'])
-                    with open("var/laps.log", "a") as myfile:
-                        myfile.write("{}\t {}\t\t {}:{}\t {}\t\t\t{}\t\t {}\t\t{}\t\t{}\t\t{}/{}\t\t\t {}\r".format(
-                                    _loop,
-                                    laptime,
-                                    minStr,
-                                    secStr,
-                                    srate,
-                                    total_pokemons,
-                                    total_gyms,
-                                    globalstatus['success'],
-                                    globalstatus['fail'],
-                                    globalstatus['solved'],
-                                    globalstatus['captcha'],
-                                    globalstatus['noitems']))
-                except ZeroDivisionError as e:
-                    print "{},{},{},{}".format(globalstatus['success'],globalstatus['fail'],globalstatus['skip'],globalstatus['noitems'])
-                    log.warn("ZeroDivisionError: {}".format(e))
-                    return
-                
-                time_0 = datetime.now()
-                total_gyms = 0
-                total_pokemons = 0
-                globalstatus = {'success' : 0, 'fail' : 0, 'skip' : 0, 'noitems' : 0, 'captcha': 0, 'solved': 0, 'spawn': 0, 'TTH': 0, 'empty-spawn':0, 'new-spawn' : 0}
-                loop_notified = True
-                print "********************"
-                print ""
+                    time_0 = datetime.now()
+                    total_gyms = 0
+                    total_pokemons = 0
+                    globalstatus = {'success' : 0, 'fail' : 0, 'skip' : 0, 'noitems' : 0, 'captcha': 0, 'solved': 0, 'spawn': 0, 'TTH': 0, 'empty-spawn':0, 'new-spawn' : 0}
+                    loop_notified = True
+                    print "********************"
+                    print ""
         percent = step/ total_points
         bar_length = 24
         hashes = '#' * int(round(percent * bar_length))

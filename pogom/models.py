@@ -1018,8 +1018,8 @@ class WorkerStatus(BaseModel):
                 }
                 break
             except AttributeError as e:
-                log.exception(traceback.format_exc(e))
-                #log.error('Attribute error with user {}: {}'.format(username, e))
+                #log.exception(traceback.format_exc(e))
+                log.error('Attribute error with user {}: {}'.format(username, e))
                 time.sleep(5)
             except Exception as e:
                 log.error('Exception in get_worker under account {} Exception message: {}'.format(username, e))
