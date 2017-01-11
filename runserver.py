@@ -41,7 +41,6 @@ from pogom.proxy import check_proxies, proxies_refresher
 pgoapi_version = "1.1.7"
 
 # Moved here so logger is configured at load time.
-<<<<<<< HEAD
 # define a Handler which writes INFO messages or higher to the sys.stderr and with colored format
 console = logging.StreamHandler()
 args = get_args()
