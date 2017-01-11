@@ -848,9 +848,10 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                     log.debug(status['message'])
                     if parsed and 'count2' in parsed and parsed['count2']:
                         total_pokemons += parsed['count2']
-                        globalstatus['success'] += 1
                     if parsed and 'gymcount' in parsed and parsed['gymcount']:
                         total_gyms += parsed['gymcount']
+                    if (parsed and 'gymcount' in parsed and parsed['gymcount']) or (parsed and 'count2' in parsed and parsed['count2']):
+                        globalstatus['success'] += 1
                 # except KeyError as e:
                 except Exception as e:
                     parsed = False
