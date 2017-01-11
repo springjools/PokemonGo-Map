@@ -1479,7 +1479,7 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue, a
     # Check for a 0/0/0 bad scan
     # If we saw nothing and there should be visible forts, it's bad
     if not len(wild_pokemon) and not len(forts) and ScannedLocation.visible_forts(step_location):
-        log.warning('Bad scan. Parsing found 0/0/0 Pokemon/pokestops/gyms')
+        log.debug('Bad scan. Parsing found 0/0/0 Pokemon/pokestops/gyms')
         log.debug('Common causes: captchas, IP bans, or using -ng and -nk arguments')
         return {
             'count': 0,
