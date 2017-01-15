@@ -46,7 +46,7 @@ from pgoapi.exceptions import AuthException
 
 from .models import parse_map, GymDetails, parse_gyms, MainWorker, WorkerStatus
 from .fakePogoApi import FakePogoApi
-from .utils import now
+from .utils import now, get_tutorial_state, complete_tutorial
 from .transform import get_new_coords
 from .manual_captcha import captcha_verifier
 import schedulers
@@ -419,7 +419,7 @@ def search_overseer_thread(args, new_location_queue, pause_bit, heartb, db_updat
             except Empty:
                 pass
 
-            step_distance = 0.9 if args.no_pokemon else 0.07
+            step_distance = 0.45 if args.no_pokemon else 0.07
 
             locations = generate_hive_locations(
                 current_location, step_distance, args.step_limit, len(scheduler_array))
@@ -537,6 +537,9 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
         try:
             status['starttime'] = now()
 
+            # Track per loop.
+            first_login = True
+
             # Get an account.
             status['message'] = 'Waiting to get new account from the queue'
             log.debug(status['message'])
@@ -575,6 +578,7 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
             if args.proxy:
                 # If proxy is not assigned yet or if proxy-rotation is defined
                 # -> query for new proxy.
+
                 if (not status['proxy_url']) or \
                    ((args.proxy_rotation is not None) and (args.proxy_rotation != 'none')):
 
@@ -601,7 +605,6 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                     status['message'] = 'Account {} failed more than {} scans; possibly bad account. Switching accounts...'.format(
                         account['username'], args.max_failures)
                     log.warning(status['message'])
-
                     account_failures.append(
                         {'account': account, 'last_fail_time': now(), 'reason': 'failures'})
                     # Exit this loop to get a new account and have the API
@@ -614,7 +617,6 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                     status['message'] = 'Account {} returned empty scan for more than {} scans; possibly ip is banned. Switching accounts...'.format(account[
                                                                                                                                                      'username'], args.max_empty)
                     log.warning(status['message'])
-
                     account_failures.append(
                         {'account': account, 'last_fail_time': now(), 'reason': 'empty scans'})
                     # Exit this loop to get a new account and have the API
@@ -628,10 +630,8 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                     status['message'] = 'Account {} proxy {} is not in a live list any more. Switching accounts...'.format(
                         account['username'], status['proxy_url'])
                     log.warning(status['message'])
-
                     # Experimental, nobody did this before.
                     account_queue.put(account)
-
                     # Exit this loop to get a new account and have the API
                     # recreated.
                     break
@@ -642,7 +642,6 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                         status['message'] = 'Account {} is being rotated out to rest.'.format(account[
                                                                                               'username'])
                         log.info(status['message'])
-
                         account_failures.append(
                             {'account': account, 'last_fail_time': now(), 'reason': 'rest interval'})
                         break
@@ -707,6 +706,19 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                 check_login(args, account, api, step_location,
                             status['proxy_url'])
 
+
+                # Only run this when it's the account's first login, after
+                # check_login().
+                if first_login:
+                    first_login = False
+
+                    # Check tutorial completion.
+                    if args.complete_tutorial:
+                        tutorial_state = get_tutorial_state(api)
+
+                        if not all(x in tutorial_state for x in (0, 1, 3, 4, 7)):
+                            complete_tutorial(api, account, tutorial_state)
+
                 # Putting this message after the check_login so the messages
                 # aren't out of order.
                 status['message'] = messages['search']
@@ -714,7 +726,7 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
 
                 # Make the actual request.
                 scan_date = datetime.utcnow()
-                response_dict = map_request(api, step_location, args.jitter)
+                response_dict = map_request(api, step_location, args.no_jitter)
                 status['last_scan_date'] = datetime.utcnow()
 
                 # Record the time and the place that the worker made the
@@ -740,112 +752,52 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                     if args.captcha_solving:
                         captcha_url = response_dict['responses'][
                             'CHECK_CHALLENGE']['challenge_url']
-
                         if len(captcha_url) > 1:
-                            globalstatus['captcha'] += 1
-                            if args.captcha_key is None:
-                                if not args.validate_chrome:
-                                    status['message'] = 'Account {} is encountering a captcha, but ChromeDriver is not installed.'.format(account[
-                                                                                                                                          'username'])
-                                    log.warning(status['message'])
-                                    account_failures.append(
-                                        {'account': account, 'last_fail_time': now(), 'reason': 'ChromeDriver is not installed.'})
-                                    break
-                                else:
-                                    status['message'] = 'Account {} is encountering a captcha, starting response sequence'.format(account[
-                                                                                                                                  'username'])
-                                    log.debug(status['message'])
-                                    captcha_token = captcha_verifier(
-                                        captcha_url, status)
-                                    status['message'] = 'Retrieved captcha token, attempting to verify challenge for {}.'.format(account[
-                                        'username'])
-                                    log.debug(status['message'])
-                                    if captcha_token == 'Fail':
-                                        status['message'] = 'Account {} failed verifyChallenge, putting away account for now.'.format(account[
-                                                                                                                                      'username'])
-                                        log.info(status['message'])
-                                        account_failures.append(
-                                            {'account': account, 'last_fail_time': now(), 'reason': 'captcha failed to verify'})
-                                        break
-                                    else:
-                                        response = api.verify_challenge(
-                                            token=captcha_token)
-                                        if 'success' in response['responses']['VERIFY_CHALLENGE']:
-                                            status['message'] = "Account {} successfully uncaptcha'd.".format(account[
-                                                'username'])
-                                            globalstatus['solved'] += 1
-                                            log.info(status['message'])
-                                            scan_date = datetime.utcnow()
-                                            # Make another request for the same
-                                            # coordinate since the previous one
-                                            # was captcha'd
-                                            response_dict = map_request(
-                                                api, step_location, args.jitter)
-                                            status[
-                                                'last_scan_date'] = datetime.utcnow()
-                                        else:
-                                            status['message'] = 'Account {} failed verifyChallenge, putting away account for now.'.format(account[
-                                                                                                                                          'username'])
-                                            log.info(status['message'])
-                                            account_failures.append(
-                                                {'account': account, 'last_fail_time': now(), 'reason': 'captcha failed to verify'})
-                                            break
+                            status['message'] = 'Account {} is encountering a captcha, starting 2captcha sequence.'.format(account[
+                                                                                                                           'username'])
+                            log.warning(status['message'])
+                            captcha_token = token_request(
+                                args, status, captcha_url)
+                            if 'ERROR' in captcha_token:
+                                log.warning(
+                                    "Unable to resolve captcha, please check your 2captcha API key and/or wallet balance.")
+                                account_failures.append({'account': account, 'last_fail_time': now(
+                                ), 'reason': 'captcha failed to verify'})
+                                break
                             else:
-                                status['message'] = 'Account {} is encountering a captcha, starting 2captcha sequence.'.format(account[
-                                    'username'])
-                                log.warning(status['message'])
-
-                                captcha_token = token_request(
-                                    args, status, captcha_url)
-
-                                if 'ERROR' in captcha_token:
-                                    log.warning(
-                                        'Unable to resolve captcha, please check your 2captcha API key and wallet balance.')
-                                    account_failures.append(
-                                        {'account': account, 'last_fail_time': now(), 'reason': 'captcha failed to verify'})
-                                    break
-                                else:
-                                    status['message'] = 'Retrieved captcha token, attempting to verify challenge for {}.'.format(account[
-                                        'username'])
+                                status['message'] = 'Retrieved captcha token, attempting to verify challenge for {}.'.format(account[
+                                                                                                                             'username'])
+                                log.info(status['message'])
+                                response = api.verify_challenge(
+                                    token=captcha_token)
+                                if 'success' in response['responses']['VERIFY_CHALLENGE']:
+                                    status['message'] = "Account {} successfully uncaptcha'd.".format(account[
+                                                                                                      'username'])
                                     log.info(status['message'])
-                                    response = api.verify_challenge(
-                                        token=captcha_token)
+                                    scan_date = datetime.utcnow()
+                                    # Make another request for the same
+                                    # location since the previous one was
+                                    # captcha'd.
+                                    response_dict = map_request(
+                                        api, step_location, args.no_jitter)
+                                    status['last_scan_date'] = datetime.utcnow()
+                                else:
+                                    status['message'] = "Account {} failed verifyChallenge, putting away account for now.".format(account[
+                                                                                                                                  'username'])
+                                    log.info(status['message'])
+                                    account_failures.append({'account': account, 'last_fail_time': now(
+                                    ), 'reason': 'captcha failed to verify'})
+                                    break
 
-                                    if 'success' in response['responses']['VERIFY_CHALLENGE']:
-                                        status['message'] = "Account {} successfully uncaptcha'd.".format(account[
-                                            'username'])
-                                        log.info(status['message'])
-                                        scan_date = datetime.utcnow()
-
-                                        # Make another request for the same
-                                        # coordinate since the previous one was
-                                        # captcha'd
-                                        response_dict = map_request(
-                                            api, step_location, args.jitter)
-                                        status[
-                                            'last_scan_date'] = datetime.utcnow()
-                                    else:
-                                        status['message'] = 'Account {} failed verifyChallenge, putting away account for now.'.format(account[
-                                                                                                                                      'username'])
-                                        log.info(status['message'])
-                                        account_failures.append(
-                                            {'account': account, 'last_fail_time': now(), 'reason': 'captcha failed to verify'})
-                                        break
-                    try:
-                        parsed = parse_map(args, response_dict, step_location, dbq, whq, api, scan_date)
-                        scheduler.task_done(status, parsed)
-                    except OperationalError as e:
-                        log.warning("OperationalError: {}".format(e))
-                        time.sleep(10)
-
-                    if parsed:
-                        if parsed['count'] > 0:
-                            status['success'] += 1
-                            consecutive_noitems = 0
-                        else:
-                            status['noitems'] += 1
-                            consecutive_noitems += 1
-                        
+                    parsed = parse_map(args, response_dict,
+                                       step_location, dbq, whq, api, scan_date)
+                    scheduler.task_done(status, parsed)
+                    if parsed['count'] > 0:
+                        status['success'] += 1
+                        consecutive_noitems = 0
+                    else:
+                        status['noitems'] += 1
+                        consecutive_noitems += 1
                     consecutive_fails = 0
                     status['message'] = 'Search at {:6f},{:6f} completed with {} finds.'.format(
                         step_location[0], step_location[1], parsed['count'])
@@ -894,6 +846,10 @@ def search_worker_thread(args, account_queue, account_failures, search_items_que
                                 #gyms_to_update[gym['gym_id']] = gym
                                 continue
                             # if we have a record of this gym already, check if the gym has been updated since our last update
+
+                            # If we have a record of this gym already, check if
+                            # the gym has been updated since our last update.
+
                             if record.last_scanned < gym['last_modified']:
                                 gyms_to_update[gym['gym_id']] = gym
                                 continue
@@ -997,17 +953,17 @@ def check_login(args, account, api, position, proxy_url):
     time.sleep(20)
 
 
-def map_request(api, position, jitter=False):
+def map_request(api, position, no_jitter=False):
     # Create scan_location to send to the api based off of position, because
     # tuples aren't mutable.
-    if jitter:
+    if no_jitter:
+        # Just use the original coordinates.
+        scan_location = position
+    else:
         # Jitter it, just a little bit.
         scan_location = jitterLocation(position)
         log.debug('Jittered to: %f/%f/%f',
                   scan_location[0], scan_location[1], scan_location[2])
-    else:
-        # Just use the original coordinates.
-        scan_location = position
 
     try:
         cell_ids = util.get_cell_ids(scan_location[0], scan_location[1])
