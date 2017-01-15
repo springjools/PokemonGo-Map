@@ -652,7 +652,6 @@ function customizePokemonMarker (marker, item, skipNotification) {
 
 function setupGymMarker (item) {
   var gymSize = getGymLevel(item['gym_points']) < 5 ? 32 : (getGymLevel(item['gym_points']) < 8 ? 40 : (getGymLevel(item['gym_points']) < 10 ? 48 : 56))
-=======
   var timeDelta = (Date.now() - item['last_scanned']) / 1000 / 60 // minutes since last scan
   var opacity = (timeDelta < 120) ? 1.0 : (timeDelta < 720) ? 0.40 : 0.15
 
