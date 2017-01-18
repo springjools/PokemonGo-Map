@@ -40,8 +40,8 @@ args = get_args()
 flaskDb = FlaskDB()
 cache = TTLCache(maxsize=100, ttl=60 * 5)
 
-<<<<<<< HEAD
-db_schema_version = 11
+db_schema_version = 12
+
 warnQueSize = 150
 EncounterErrors = {
     0: 'ENCOUNTER_ERROR',
@@ -53,9 +53,6 @@ EncounterErrors = {
     6: 'ENCOUNTER_ALREADY_HAPPENED',
     7: 'POKEMON_INVENTORY_FULL'
 }
-=======
-db_schema_version = 12
-
 
 class MyRetryDB(RetryOperationalError, PooledMySQLDatabase):
     pass
@@ -170,19 +167,16 @@ class Pokemon(BaseModel):
         # (potentially) large dict with append().
         gc.disable()
 
-        pokemons = []
+        pokemon = []
         try:
             for p in list(query):
-        pokemon = []
-        for p in list(query):
-
                 p['pokemon_name'] = get_pokemon_name(p['pokemon_id'])
                 p['pokemon_rarity'] = get_pokemon_rarity(p['pokemon_id'])
                 p['pokemon_types'] = get_pokemon_types(p['pokemon_id'])
                 if args.china:
                     p['latitude'], p['longitude'] = \
                         transform_from_wgs_to_gcj(p['latitude'], p['longitude'])
-                pokemons.append(p)
+                pokemon.append(p)
         except OperationalError as e:
             log.warn("OperationalError:{}".format(e))
         
@@ -1618,7 +1612,6 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue,
                     'spawn_points': spawn_points,
                     'bad_scan': True
                 }
->>>>>>> fdb44125db31586fcb99bdb717359b5b11a1f7d4
 
     scan_loc = ScannedLocation.get_by_loc(step_location)
     done_already = scan_loc['done']
@@ -1792,7 +1785,6 @@ def parse_map(args, map_dict, step_location, db_update_queue, wh_update_queue,
                 pokemons[p['encounter_id']]['individual_stamina'] if 'individual_stamina' in pokemons[p['encounter_id']] else None
             )
 
-    if len(forts):
     if forts and (config['parse_pokestops'] or config['parse_gyms']):
         if config['parse_pokestops']:
             stop_ids = [f['id'] for f in forts if f.get('type') == 1]
