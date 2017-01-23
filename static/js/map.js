@@ -664,8 +664,8 @@ function customizePokemonMarker(marker, item, skipNotification) {
 
 function setupGymMarker(item) {
 	var timeDelta = (Date.now() - item['last_scanned']) / 1000 / 60 // minutes since last scan
-	var opacity = (timeDelta < 120) ? 1.0 : (timeDelta < 720) ? 0.40 : 0.15
 	var gymSize = 48
+	var opacity = (timeDelta < Store.get('obsoletion1')) ? 1.0 : (timeDelta < Store.get('obsoletion2')) ? Store.get('opacity1') : (timeDelta < Store.get('obsoletion3')) ? Store.get('opacity2') : Store.get('opacity3')
     var marker = new google.maps.Marker({
         position: {
             lat: item['latitude'],
@@ -721,7 +721,7 @@ function setupGymMarker(item) {
 
 function updateGymMarker(item, marker) {
     var timeDelta = (Date.now() - item['last_scanned']) / 1000 / 60 // minutes since last scan
-	var opacity = (timeDelta < 120) ? 1.0 : (timeDelta < 720) ? 0.40 : 0.15
+	var opacity = (timeDelta < Store.get('obsoletion1')) ? 1.0 : (timeDelta < Store.get('obsoletion2')) ? Store.get('opacity1') : (timeDelta < Store.get('obsoletion3')) ? Store.get('opacity2') : Store.get('opacity3')
 	var gymSize = 48
 	
 	marker.setOpacity(opacity)
