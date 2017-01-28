@@ -970,7 +970,7 @@ var StoreOptions = {
         default: 'shield',
         type: StoreTypes.String
     },
-	'gymMarkerSize': {
+    'gymMarkerSize': {
         default: 48,
         type: StoreTypes.Number
     },

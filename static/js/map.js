@@ -729,7 +729,7 @@ function setupGymMarker(item) {
     return marker
   }
 function updateGymIcons() {
-	var gymSize = Store.get('gymMarkerSize')
+    var gymSize = Store.get('gymMarkerSize')
     $.each(mapData.gyms, function (key, value) {
         mapData.gyms[key]['marker'].setIcon({
             url: 'static/forts/' + Store.get('gymMarkerStyle') + '/' + gymTypes[mapData.gyms[key]['team_id']] + (mapData.gyms[key]['team_id'] !== 0 ? '_' + getGymLevel(mapData.gyms[key]['gym_points']) : '') + '.png',
