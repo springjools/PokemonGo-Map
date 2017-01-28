@@ -36,14 +36,16 @@ from pogom.proxy import check_proxies, proxies_refresher
 pgoapi_version = "1.1.7"
 
 # Moved here so logger is configured at load time.
-# define a Handler which writes INFO messages or higher to the sys.stderr and with colored format
+# define a Handler which writes INFO messages or higher to
+# the sys.stderr and with colored format
 console = logging.StreamHandler()
 args = get_args()
 if not (args.verbose or args.very_verbose):
     console.setLevel(logging.INFO)
 
 formatter = ColoredFormatter(
-    '%(log_color)s%(asctime)s %(threadName)16s  %(name)-14s %(levelname)-8s %(message)s',
+    '%(log_color)s%(asctime)s %(threadName)16s %(name)-14s' + 
+    '%(levelname)-8s %(message)s',
     datefmt='%m-%d %H:%M:%S',
     reset=True,
     log_colors={
@@ -60,8 +62,8 @@ console.setFormatter(formatter)
 if len(logging.getLogger('').handlers) <= 1:
     logging.getLogger('').addHandler(console)
 
-logging.basicConfig(format='%(asctime)s [%(threadName)16s][%(module)14s][%(levelname)8s] %(message)s')
-
+logging.basicConfig(format=
+                    '%(asctime)s [%(threadName)16s][%(module)14s][%(levelname)8s] %(message)s')
 log = logging.getLogger()
 
 # Make sure pogom/pgoapi is actually removed if it is an empty directory.
