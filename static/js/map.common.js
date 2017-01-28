@@ -977,7 +977,6 @@ var StoreOptions = {
     'zoomLevel': {
         default: 16,
         type: StoreTypes.Number
-
     },
     'opacity3': {
         default: 0.17,
