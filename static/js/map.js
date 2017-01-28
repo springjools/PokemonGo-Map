@@ -616,35 +616,7 @@ function isRangeActive(map) {
     return Store.get('showRanges')
 }
 
-<<<<<<< HEAD
-function setupGymMarker (item) {
-  var timeDelta = (Date.now() - item['last_scanned']) / 1000 / 60 // minutes since last scan
-  var opacity = (timeDelta < 120) ? 1.0 : (timeDelta < 720) ? 0.40 : 0.15
-  var gymSize = 48
-
-  var marker = new google.maps.Marker({
-    position: {
-      lat: item['latitude'],
-      lng: item['longitude']
-    },
-    opacity: opacity,
-    map: map,
-    icon: {url: 'static/forts/' + Store.get('gymMarkerStyle') + '/' + gymTypes[item['team_id']] + (item['team_id'] !== 0 ? '_' + getGymLevel(item['gym_points']) : '') + '.png', scaledSize: new google.maps.Size(gymSize, gymSize)}
-  })
-
-  if (!marker.rangeCircle && isRangeActive(map)) {
-    marker.rangeCircle = addRangeCircle(marker, map, 'gym', item['team_id'])
-  }
-
-  marker.infoWindow = new google.maps.InfoWindow({
-    content: gymLabel(gymTypes[item['team_id']], item['team_id'], item['gym_points'], item['latitude'], item['longitude'], item['last_scanned'], item['name'], item['pokemon'], item['gym_id']),
-    disableAutoPan: true
-  })
-
-  if (Store.get('useGymSidebar')) {
-=======
 function customizePokemonMarker(marker, item, skipNotification) {
->>>>>>> origin/develop
     marker.addListener('click', function () {
         this.setAnimation(null)
         this.animationDisabled = true
@@ -690,20 +662,19 @@ function customizePokemonMarker(marker, item, skipNotification) {
 }
 
 function setupGymMarker(item) {
-  var timeDelta = (Date.now() - item['last_scanned']) / 1000 / 60 // minutes since last scan
-  var opacity = (timeDelta < 120) ? 1.0 : (timeDelta < 720) ? 0.40 : 0.15
-  var gymSize = 48
-
+    var timeDelta = (Date.now() - item['last_scanned']) / 1000 / 60 // minutes since last scan
+    var gymSize = Store.get('gymMarkerSize')
+    var opacity = (timeDelta < Store.get('obsoletion1')) ? 1.0 : (timeDelta < Store.get('obsoletion2')) ? Store.get('opacity1') : (timeDelta < Store.get('obsoletion3')) ? Store.get('opacity2') : Store.get('opacity3')
     var marker = new google.maps.Marker({
         position: {
             lat: item['latitude'],
             lng: item['longitude']
         },
-    opacity: opacity,
-        map: map,
-    icon: {url: 'static/forts/' + Store.get('gymMarkerStyle') + '/' + gymTypes[item['team_id']] + (item['team_id'] !== 0 ? '_' + getGymLevel(item['gym_points']) : '') + '.png', scaledSize: new google.maps.Size(gymSize, gymSize)}
-    })
-
+        opacity: opacity,
+          map: map,
+        icon: {url: 'static/forts/' + Store.get('gymMarkerStyle') + '/' + gymTypes[item['team_id']] + (item['team_id'] !== 0 ? '_' + getGymLevel(item['gym_points']) : '') + '.png', scaledSize: new google.maps.Size(gymSize, gymSize)}
+      })
+  
     if (!marker.rangeCircle && isRangeActive(map)) {
         marker.rangeCircle = addRangeCircle(marker, map, 'gym', item['team_id'])
     }
@@ -747,22 +718,22 @@ function setupGymMarker(item) {
     return marker
 }
 
-function updateGymMarker (item, marker) {
-  var timeDelta = (Date.now() - item['last_scanned']) / 1000 / 60 // minutes since last scan
-  var opacity = (timeDelta < 120) ? 1.0 : (timeDelta < 720) ? 0.40 : 0.15
-  var gymSize = 48
+ function updateGymMarker(item, marker) {
+    var timeDelta = (Date.now() - item['last_scanned']) / 1000 / 60 // minutes since last scan
+    var opacity = (timeDelta < Store.get('obsoletion1')) ? 1.0 : (timeDelta < Store.get('obsoletion2')) ? Store.get('opacity1') : (timeDelta < Store.get('obsoletion3')) ? Store.get('opacity2') : Store.get('opacity3')
+    var gymSize = Store.get('gymMarkerSize')
 
-  marker.setOpacity(opacity)
-  marker.setIcon({url: 'static/forts/' + Store.get('gymMarkerStyle') + '/' + gymTypes[item['team_id']] + (item['team_id'] !== 0 ? '_' + getGymLevel(item['gym_points']) : '') + '.png', scaledSize: new google.maps.Size(gymSize, gymSize)})
-  marker.infoWindow.setContent(gymLabel(gymTypes[item['team_id']], item['team_id'], item['gym_points'], item['latitude'], item['longitude'], item['last_scanned'], item['name'], item['pokemon'], item['gym_id']))
-  return marker
-}
-
+    marker.setOpacity(opacity)
+    marker.setIcon({url: 'static/forts/' + Store.get('gymMarkerStyle') + '/' + gymTypes[item['team_id']] + (item['team_id'] !== 0 ? '_' + getGymLevel(item['gym_points']) : '') + '.png', scaledSize: new google.maps.Size(gymSize, gymSize)})
+    marker.infoWindow.setContent(gymLabel(gymTypes[item['team_id']], item['team_id'], item['gym_points'], item['latitude'], item['longitude'], item['last_scanned'], item['name'], item['pokemon'], item['gym_id']))
+    return marker
+  }
 function updateGymIcons() {
+	var gymSize = Store.get('gymMarkerSize')
     $.each(mapData.gyms, function (key, value) {
         mapData.gyms[key]['marker'].setIcon({
             url: 'static/forts/' + Store.get('gymMarkerStyle') + '/' + gymTypes[mapData.gyms[key]['team_id']] + (mapData.gyms[key]['team_id'] !== 0 ? '_' + getGymLevel(mapData.gyms[key]['gym_points']) : '') + '.png',
-            scaledSize: new google.maps.Size(48, 48)
+            scaledSize: new google.maps.Size(gymSize, gymSize)
         })
     })
 }
