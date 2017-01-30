@@ -514,15 +514,23 @@ def search_overseer_thread(args, new_location_queue, pause_bit, heartb,
         time.sleep(1)
 
 
+def get_scheduler_tth_found_pct(scheduler):
+    tth_found_pct = getattr(scheduler, 'tth_found', 0)
+
+    if tth_found_pct > 0:
+        # Avoid division by zero. Keep 0.0 default for consistency.
+        active_sp = max(getattr(scheduler, 'active_sp', 0.0), 1.0)
+        tth_found_pct = tth_found_pct * 100.0 / float(active_sp)
+
+    return tth_found_pct
+
+
 def wh_status_update(args, status, wh_queue, scheduler):
     scheduler_name = status['scheduler']
+
     if args.speed_scan:
-        tth_found = getattr(scheduler, 'tth_found', -1)
+        tth_found = get_scheduler_tth_found_pct(scheduler)
         spawns_found = getattr(scheduler, 'spawns_found', 0)
-        if tth_found > -1:
-            # Avoid division by zero. Keep 0.0 default for consistency.
-            active_sp = max(getattr(scheduler, 'active_sp', 0.0), 1.0)
-            tth_found = tth_found * 100.0 / float(active_sp)
 
         if (tth_found - status['scheduler_status']['tth_found']) > 0.01:
             log.debug("Scheduler update is due, sending webhook message.")
@@ -543,18 +551,18 @@ def get_stats_message(threadStatus):
     if elapsed == 0:
         elapsed = 1
 
-    sph = overseer['success_total'] * 3600 / elapsed
-    fph = overseer['fail_total'] * 3600 / elapsed
-    eph = overseer['empty_total'] * 3600 / elapsed
-    skph = overseer['skip_total'] * 3600 / elapsed
-    cph = overseer['captcha_total'] * 3600 / elapsed
+    sph = overseer['success_total'] * 3600.0 / elapsed
+    fph = overseer['fail_total'] * 3600.0 / elapsed
+    eph = overseer['empty_total'] * 3600.0 / elapsed
+    skph = overseer['skip_total'] * 3600.0 / elapsed
+    cph = overseer['captcha_total'] * 3600.0 / elapsed
     ccost = cph * 0.00299
     cmonth = ccost * 730
 
-    message = ('Total active: {}  |  Success: {} ({}/hr) | ' +
-               'Fails: {} ({}/hr) | Empties: {} ({}/hr) | ' +
-               'Skips {} ({}/hr) | ' +
-               'Captchas: {} ({}/hr)|${:2}/hr|${:2}/mo').format(
+    message = ('Total active: {}  |  Success: {} ({:.1f}/hr) | ' +
+               'Fails: {} ({:.1f}/hr) | Empties: {} ({:.1f}/hr) | ' +
+               'Skips {} ({:.1f}/hr) | ' +
+               'Captchas: {} ({:.1f}/hr)|${:.5f}/hr|${:.3f}/mo').format(
                    overseer['active_accounts'],
                    overseer['success_total'], sph,
                    overseer['fail_total'], fph,
@@ -672,6 +680,10 @@ def search_worker_thread(args, account_queue, account_failures,
     # This reinitializes the API and grabs a new account from the queue.
     while True:
         try:
+            # Force storing of previous worker info to keep consistency
+            if 'starttime' in status:
+                dbq.put((WorkerStatus, {0: WorkerStatus.db_format(status)}))
+
             status['starttime'] = now()
 
             # Track per loop.
