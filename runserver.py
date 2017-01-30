@@ -62,8 +62,9 @@ console.setFormatter(formatter)
 if len(logging.getLogger('').handlers) <= 1:
     logging.getLogger('').addHandler(console)
 
-logging.basicConfig(format=
-                    '%(asctime)s [%(threadName)16s][%(module)14s][%(levelname)8s] %(message)s')
+logging.basicConfig(
+    format='%(asctime)s [%(threadName)16s][%(module)14s][%(levelname)8s]' +
+    '%(message)s')
 log = logging.getLogger()
 
 # Make sure pogom/pgoapi is actually removed if it is an empty directory.
