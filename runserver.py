@@ -157,14 +157,14 @@ def main():
     if args.verbose and args.verbose != 'nofile':
         filelog = logging.FileHandler(args.verbose)
         filelog.setFormatter(logging.Formatter(
-            '%(asctime)s [%(threadName)16s][%(module)14s][%(levelname)8s] ' +
-            '%(message)s'))
+            '%(asctime)s [%(threadName)16s][%(module)14s]' +
+            '[%(levelname)8s] %(message)s'))
         logging.getLogger('').addHandler(filelog)
     if args.very_verbose and args.very_verbose != 'nofile':
         filelog = logging.FileHandler(args.very_verbose)
         filelog.setFormatter(logging.Formatter(
-            '%(asctime)s [%(threadName)16s][%(module)14s][%(levelname)8s] ' +
-            '%(message)s'))
+            '%(asctime)s [%(threadName)16s][%(module)14s]' +
+            '[%(levelname)8s] %(message)s'))
         logging.getLogger('').addHandler(filelog)
 
     if args.verbose or args.very_verbose:
