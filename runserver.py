@@ -19,6 +19,8 @@ from cachetools import LFUCache
 from flask_cors import CORS
 from flask_cache_bust import init_cache_busting
 
+from colorlog import ColoredFormatter
+
 from pogom import config
 from pogom.app import Pogom
 from pogom.utils import get_args, now
@@ -35,8 +37,34 @@ pgoapi_version = "1.1.7"
 ssl._create_default_https_context = ssl._create_unverified_context
 
 # Moved here so logger is configured at load time.
+# define a Handler which writes INFO messages or higher to
+# the sys.stderr and with colored format
+console = logging.StreamHandler()
+args = get_args()
+if not (args.verbose or args.very_verbose):
+    console.setLevel(logging.INFO)
+
+formatter = ColoredFormatter(
+    '%(log_color)s%(asctime)s %(threadName)16s %(name)-14s' +
+    '%(levelname)-8s %(message)s',
+    datefmt='%m-%d %H:%M:%S',
+    reset=True,
+    log_colors={
+        'DEBUG': 'blue',
+        'INFO': 'white',
+        'WARNING': 'yellow',
+        'ERROR': 'red',
+        'CRITICAL': 'red,bg_white',
+    },
+    secondary_log_colors={},
+    style='%'
+)
+console.setFormatter(formatter)
+if len(logging.getLogger('').handlers) <= 1:
+    logging.getLogger('').addHandler(console)
+
 logging.basicConfig(
-    format='%(asctime)s [%(threadName)16s][%(module)14s][%(levelname)8s] ' +
+    format='%(asctime)s [%(threadName)16s][%(module)14s][%(levelname)8s]' +
     '%(message)s')
 log = logging.getLogger()
 
@@ -131,14 +159,14 @@ def main():
     if args.verbose and args.verbose != 'nofile':
         filelog = logging.FileHandler(args.verbose)
         filelog.setFormatter(logging.Formatter(
-            '%(asctime)s [%(threadName)16s][%(module)14s][%(levelname)8s] ' +
-            '%(message)s'))
+            '%(asctime)s [%(threadName)16s][%(module)14s]' +
+            '[%(levelname)8s] %(message)s'))
         logging.getLogger('').addHandler(filelog)
     if args.very_verbose and args.very_verbose != 'nofile':
         filelog = logging.FileHandler(args.very_verbose)
         filelog.setFormatter(logging.Formatter(
-            '%(asctime)s [%(threadName)16s][%(module)14s][%(levelname)8s] ' +
-            '%(message)s'))
+            '%(asctime)s [%(threadName)16s][%(module)14s]' +
+            '[%(levelname)8s] %(message)s'))
         logging.getLogger('').addHandler(filelog)
 
     if args.verbose or args.very_verbose:
