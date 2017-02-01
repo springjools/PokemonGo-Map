@@ -747,7 +747,7 @@ function setupGymMarker(item) {
             lng: item['longitude']
         },
         map: map,
-    icon: {url: 'static/forts/' + Store.get('gymMarkerStyle') + '/' + gymTypes[item['team_id']] + (item['team_id'] !== 0 ? '_' + getGymLevel(item['gym_points']) : '') + '.png', scaledSize: new google.maps.Size(gymSize, gymSize)}
+        icon: {url: 'static/forts/' + Store.get('gymMarkerStyle') + '/' + gymTypes[item['team_id']] + (item['team_id'] !== 0 ? '_' + getGymLevel(item['gym_points']) : '') + '.png', scaledSize: new google.maps.Size(gymSize, gymSize)}
     })
 
     if (!marker.rangeCircle && isRangeActive(map)) {
