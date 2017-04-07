@@ -18,6 +18,8 @@ from cachetools import LFUCache
 from flask_cors import CORS
 from flask_cache_bust import init_cache_busting
 
+from colorlog import ColoredFormatter
+
 from pogom import config
 from pogom.app import Pogom
 from pogom.utils import get_args, now, extract_sprites
